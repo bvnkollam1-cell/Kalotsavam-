@@ -6,7 +6,7 @@
 <title>ജില്ലാ കലോത്സവം 2026-27 | ഭാരതീയ വിദ്യാനികേതൻ</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Noto+Sans+Malayalam:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <!-- Firebase Realtime Database: replaces the Claude-artifact-only window.storage API so this
@@ -349,7 +349,7 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
 .public-score-dots{display:flex;justify-content:center;gap:6px;margin-top:9px;}
 .public-score-dot{width:7px;height:7px;border:0;border-radius:50%;background:var(--line);padding:0;cursor:pointer;}
 .public-score-dot.active{background:var(--ochre);transform:scale(1.25);}
-.public-search-row{display:grid;grid-template-columns:1.25fr .9fr auto;gap:8px;align-items:end;}
+.public-search-row{display:grid;grid-template-columns:1.1fr .8fr 1.1fr auto;gap:8px;align-items:end;}
 .public-search-row label{margin:0 0 4px;}
 .public-search-row .btn{height:40px;}
 #publicEventResults{margin-top:10px;}
@@ -412,6 +412,10 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
           <div>
             <label class="malayalam">കാറ്റഗറി</label>
             <select id="publicEventCat"></select>
+          </div>
+          <div>
+            <label class="malayalam">ഇനം തിരഞ്ഞെടുക്കുക</label>
+            <select id="publicEventItem" class="malayalam"></select>
           </div>
           <button class="btn malayalam" type="button" onclick="renderPublicEventResults()">തിരയുക</button>
         </div>
@@ -2573,8 +2577,27 @@ function populatePublicEventSearch(){
   const catSel=document.getElementById('publicEventCat');
   if(!catSel) return;
   const prev=catSel.value;
-  catSel.innerHTML='<option value="">എല്ലാ കാറ്റഗറിയും</option>'+Object.keys(CATS).map(c=>`<option value="${c}">${CATS[c].name} (${c})</option>`).join('');
-  if(Object.keys(CATS).includes(prev)) catSel.value=prev;
+  const selectableCats=Object.keys(CATS).filter(c=>!/പൊതു/.test(CATS[c].name));
+  catSel.innerHTML='<option value="">എല്ലാ കാറ്റഗറിയും</option>'+selectableCats.map(c=>`<option value="${c}">${CATS[c].name} (${c})</option>`).join('');
+  if(selectableCats.includes(prev)) catSel.value=prev;
+  populatePublicEventItemSelect();
+}
+function publicEventMatches(){
+  const q=(document.getElementById('publicEventSearch')?.value||'').trim().toLowerCase();
+  const cat=document.getElementById('publicEventCat')?.value||'';
+  return publicEventItems().filter(i=>{
+    const text=`${i.code} ${i.name} ${i.cat}`.toLowerCase();
+    return (!q||text.includes(q)) && (!cat||i.cat===cat);
+  });
+}
+function populatePublicEventItemSelect(){
+  const itemSel=document.getElementById('publicEventItem');
+  if(!itemSel) return;
+  const prev=itemSel.value;
+  const matches=publicEventMatches();
+  itemSel.innerHTML='<option value="">-- ഇനം തിരഞ്ഞെടുക്കുക --</option>'+matches.map(i=>`<option value="${i.code}">${itemLabel(i)}</option>`).join('');
+  if(matches.some(i=>String(i.code)===prev)) itemSel.value=prev;
+  else itemSel.value='';
 }
 function renderPublicScoreboard(){
   const slides=document.getElementById('publicScoreSlides');
@@ -2606,20 +2629,21 @@ function startPublicScoreSlideshow(){
 function renderPublicEventResults(){
   const box=document.getElementById('publicEventResults');
   const q=(document.getElementById('publicEventSearch')?.value||'').trim().toLowerCase();
-  const cat=document.getElementById('publicEventCat')?.value||'';
-  const matches=publicEventItems().filter(i=>{
-    const text=`${i.code} ${i.name} ${i.cat}`.toLowerCase();
-    return (!q||text.includes(q)) && (!cat||i.cat===cat);
-  });
+  const selectedCode=document.getElementById('publicEventItem')?.value||'';
+  const matches=publicEventMatches();
   if(!matches.length){box.innerHTML='<div class="empty malayalam">പൊരുത്തപ്പെടുന്ന ഇവന്റ് കണ്ടെത്തിയില്ല</div>';return;}
-  const exact=matches.find(i=>String(i.code)===q || i.name.toLowerCase()===q);
-  const item=exact||matches[0];
+  let item=null;
+  if(selectedCode) item=matches.find(i=>String(i.code)===selectedCode) || publicEventItems().find(i=>String(i.code)===selectedCode);
+  if(!item){
+    const exact=matches.find(i=>String(i.code)===q || i.name.toLowerCase()===q);
+    item=exact||matches[0];
+  }
   const list=computeResult(item.code);
   let html=`<div class="public-result-title malayalam">${itemLabel(item)}</div>`;
   html+=`<div class="table-wrap"><table><thead><tr><th>റാങ്ക്</th><th>ചെസ്റ്റ്#</th><th class="malayalam">പേര്</th><th class="malayalam">സ്കൂൾ</th><th>%</th><th>ഗ്രേഡ്</th><th>പോയിന്റ്</th></tr></thead><tbody>`;
   html+=list.map((r,idx)=>{const gc=r.grade==='A'?'grade-A':r.grade==='B'?'grade-B':r.grade==='C'?'grade-C':'';return `<tr class="${idx===0&&r.grade?'rank-1':''}"><td>${r.avg!==null?ordinal(idx+1):'-'}</td><td>${r.chest||'-'}</td><td class="malayalam">${r.name}</td><td class="malayalam">${r.schoolName}</td><td>${r.avg!==null?r.avg.toFixed(1):'-'}</td><td class="${gc}">${r.grade||'-'}</td><td>${r.points}</td></tr>`}).join('')||'<tr><td colspan="7" class="empty malayalam">ഫലങ്ങളില്ല</td></tr>';
   html+='</tbody></table></div>';
-  if(matches.length>1){html+=`<div class="public-mini-note malayalam">${matches.length} ഇനങ്ങൾ പൊരുത്തപ്പെട്ടു — കൂടുതൽ കൃത്യമായി കണ്ടെത്താൻ ഇവന്റിന്റെ പേര്/കോഡ് നൽകുക.</div>`;}
+  if(!selectedCode && matches.length>1){html+=`<div class="public-mini-note malayalam">${matches.length} ഇനങ്ങൾ പൊരുത്തപ്പെട്ടു — താഴെയുള്ള ലിസ്റ്റിൽ നിന്ന് കൃത്യമായ ഇനം തിരഞ്ഞെടുക്കുക.</div>`;}
   box.innerHTML=html;
 }
 function renderLoginPublicBoard(){
@@ -2629,6 +2653,9 @@ function renderLoginPublicBoard(){
   startPublicScoreSlideshow();
 }
 document.getElementById('publicEventSearch')?.addEventListener('keydown',e=>{if(e.key==='Enter')renderPublicEventResults();});
+document.getElementById('publicEventSearch')?.addEventListener('input',()=>populatePublicEventItemSelect());
+document.getElementById('publicEventCat')?.addEventListener('change',()=>{populatePublicEventItemSelect();renderPublicEventResults();});
+document.getElementById('publicEventItem')?.addEventListener('change',renderPublicEventResults);
 
 /* ============================================================
    INIT
