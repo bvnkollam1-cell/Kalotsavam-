@@ -206,6 +206,12 @@
   .foot{
     text-align:center;font-size:.72rem;color:#8a7a5f;padding:26px 10px 10px;
   }
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(42,29,18,.55);
+    display:flex; align-items:flex-start; justify-content:center;
+    padding:24px 12px; overflow-y:auto; z-index:200;
+  }
+  .modal-box{width:100%; max-width:480px; margin:auto;}
   .pill-group{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 4px;}
   .pill-group button{
     font-size:.74rem; padding:5px 10px; border-radius:100px; border:1px solid var(--line);
@@ -706,10 +712,13 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
         <select id="entryFilterCat"><option value="">എല്ലാ കാറ്റഗറിയും</option></select>
         <select id="entryFilterItem"><option value="">എല്ലാ ഇനങ്ങളും</option></select>
       </div>
-      <div style="margin-bottom:10px;"><button class="btn ghost small malayalam" onclick="downloadSchoolEntriesPDF(CURRENT_USER.schoolId)">⬇️ എന്റെ സ്കൂളിന്റെ ലിസ്റ്റ് PDF ഡൗൺലോഡ് ചെയ്യുക</button></div>
+      <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn ghost small malayalam" onclick="downloadSchoolEntriesPDF(CURRENT_USER.schoolId)">⬇️ എന്റെ സ്കൂളിന്റെ ലിസ്റ്റ് PDF ഡൗൺലോഡ് ചെയ്യുക</button>
+        <button class="btn secondary small malayalam" onclick="downloadSchoolEntriesExcel(CURRENT_USER.schoolId)">⬇️ Excel ഡൗൺലോഡ് ചെയ്യുക</button>
+      </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th class="malayalam">രജി. നമ്പർ</th><th class="malayalam">ചെസ്റ്റ്</th><th>പേര്</th><th class="malayalam">ക്ലാസ്</th><th>സ്കൂൾ</th><th>ഇനം</th><th></th></tr></thead>
+          <thead><tr><th class="malayalam">രജി. നമ്പർ</th><th class="malayalam">ചെസ്റ്റ്</th><th>പേര്</th><th class="malayalam">ക്ലാസ്</th><th>സ്കൂൾ</th><th class="malayalam">ഇനങ്ങൾ</th><th></th></tr></thead>
           <tbody id="entriesTbody"></tbody>
         </table>
       </div>
@@ -871,8 +880,38 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
 
 </main>
 
-<div class="foot">ഭാരതീയ വിദ്യാനികേതൻ · കലാമൃതം 2026-27 &nbsp;|&nbsp; ഈ ടൂൾ ഓഫ്‌ലൈനിൽ ബ്രൗസറിൽ പ്രവർത്തിക്കുന്നു, ഡാറ്റ പങ്കിട്ട സംഭരണത്തിൽ സൂക്ഷിക്കുന്നു.</div>
+<div class="foot">ഭാരതീയ വിദ്യാനികേതൻ കൊല്ലം കലാമൃതം2026-27, created and designed by മണികണ്ഠൻ പട്ടാഴി</div>
 <div class="toast" id="toast"></div>
+
+<!-- ============ EDIT STUDENT MODAL ============ -->
+<div class="modal-overlay" id="editStudentModal" style="display:none;">
+  <div class="modal-box card">
+    <h3 class="section-head malayalam" style="margin-top:0;">കുട്ടിയുടെ വിവരങ്ങൾ എഡിറ്റ് ചെയ്യുക</h3>
+    <div class="note malayalam" id="editStudentRegNoNote"></div>
+    <label>മത്സരാർത്ഥിയുടെ പേര് / ടീം പേര്</label>
+    <input type="text" id="editStudentName" placeholder="പേര് നൽകുക">
+    <label class="malayalam">ക്ലാസ്</label>
+    <select id="editStudentClass">
+      <option value="">തിരഞ്ഞെടുക്കുക</option>
+      <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+      <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+      <option value="7">7</option><option value="8">8</option><option value="9">9</option>
+      <option value="10">10</option>
+    </select>
+
+    <label class="malayalam" style="margin-top:14px;">ഇനങ്ങൾ (ചേർക്കാനും നീക്കാനും ടിക്ക് ചെയ്യുക)</label>
+    <div class="filters">
+      <select id="editItemCat"></select>
+      <input type="text" id="editItemSearch" placeholder="ഇനം അല്ലെങ്കിൽ കോഡ് തിരയുക...">
+    </div>
+    <div id="editItemChecklist" class="table-wrap" style="max-height:260px;padding:6px 10px;"></div>
+
+    <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn" onclick="saveStudentEditModal()">സേവ് ചെയ്യുക</button>
+      <button class="btn ghost" onclick="closeEditStudentModal()">റദ്ദാക്കുക</button>
+    </div>
+  </div>
+</div>
 
 <script>
 /* ============================================================
@@ -1525,7 +1564,7 @@ function renderSchools(){
       <td>${s.contactNumber||'-'}</td>
       <td>${acc.username}</td>
       <td>${acc.password}</td>
-      <td><button class="btn ghost small malayalam" onclick="downloadSchoolEntriesPDF('${s.id}')">📄 PDF</button></td>
+      <td><button class="btn ghost small malayalam" onclick="downloadSchoolEntriesPDF('${s.id}')">📄 PDF</button> <button class="btn secondary small malayalam" onclick="downloadSchoolEntriesExcel('${s.id}')">📊 Excel</button></td>
       <td><button class="btn danger small" onclick="removeSchool('${s.id}')">നീക്കുക</button></td>
     </tr>`;
   }).join('') || `<tr><td colspan="9" class="empty">സ്കൂളുകൾ രജിസ്റ്റർ ചെയ്തിട്ടില്ല</td></tr>`;
@@ -1694,6 +1733,100 @@ async function removeEntry(id){
   renderEntries();
   toast('നീക്കം ചെയ്തു');
 }
+/* ============================================================
+   EDIT STUDENT MODAL (grouped entries — one card per reg. number)
+   ============================================================ */
+let EDIT_STUDENT_ID = null;
+function populateEditCatSelect(){
+  const sel = document.getElementById('editItemCat');
+  if(sel.dataset.init) return;
+  sel.innerHTML = '<option value="">എല്ലാ കാറ്റഗറിയും</option>' + Object.keys(CATS).map(c=>`<option value="${c}">${CATS[c].name} (${c})</option>`).join('');
+  sel.addEventListener('change', renderEditItemChecklist);
+  sel.dataset.init = 1;
+}
+function renderEditItemChecklist(){
+  populateEditCatSelect();
+  const cat = document.getElementById('editItemCat').value;
+  const q = (document.getElementById('editItemSearch').value||'').trim().toLowerCase();
+  let list = ITEMS.slice();
+  if(cat) list = list.filter(i=>i.cat===cat);
+  if(q) list = list.filter(i=> i.name.toLowerCase().includes(q) || String(i.code).includes(q));
+  const box = document.getElementById('editItemChecklist');
+  const checkedNow = new Set(Array.from(box.querySelectorAll('input.editchk:checked')).map(c=>c.value));
+  const baseSet = box.dataset.loaded ? checkedNow : new Set(ENTRIES.filter(e=>e.studentId===EDIT_STUDENT_ID).map(e=>String(e.itemCode)));
+  box.innerHTML = list.map(i=>`
+    <label style="display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid var(--line);font-size:.83rem;">
+      <input type="checkbox" class="editchk" value="${i.code}" ${baseSet.has(String(i.code))?'checked':''}>
+      <span class="malayalam">${i.code} — ${i.name} <span style="opacity:.6;">(${i.cat} · ${i.gender})</span></span>
+    </label>`).join('') || `<div class="empty malayalam">ഇനങ്ങൾ കണ്ടെത്തിയില്ല</div>`;
+  box.dataset.loaded = 1;
+}
+document.getElementById('editItemSearch').addEventListener('input', renderEditItemChecklist);
+
+function openEditStudentModal(studentId){
+  const student = STUDENTS.find(s=>s.id===studentId);
+  if(!student){ toast('കുട്ടിയെ കണ്ടെത്താനായില്ല'); return; }
+  if(CURRENT_USER && CURRENT_USER.role==='school' && student.schoolId!==CURRENT_USER.schoolId){
+    toast('ഈ കുട്ടിയെ എഡിറ്റ് ചെയ്യാൻ അനുവാദമില്ല'); return;
+  }
+  if(isRegistrationLockedForCurrentUser()){
+    toast('രജിസ്ട്രേഷൻ ക്ലോസ് ചെയ്തിരിക്കുന്നു — ഇനി മാറ്റങ്ങൾ വരുത്താനാവില്ല');
+    return;
+  }
+  EDIT_STUDENT_ID = studentId;
+  document.getElementById('editStudentRegNoNote').innerHTML = `രജിസ്റ്റർ നമ്പർ: <b>${student.regNo}</b>`;
+  document.getElementById('editStudentName').value = student.name || '';
+  document.getElementById('editStudentClass').value = student.class || '';
+  document.getElementById('editItemCat').value = '';
+  document.getElementById('editItemSearch').value = '';
+  const box = document.getElementById('editItemChecklist');
+  box.dataset.loaded = '';
+  renderEditItemChecklist();
+  document.getElementById('editStudentModal').style.display = 'flex';
+}
+function closeEditStudentModal(){
+  document.getElementById('editStudentModal').style.display = 'none';
+  EDIT_STUDENT_ID = null;
+}
+async function saveStudentEditModal(){
+  if(!EDIT_STUDENT_ID) return;
+  if(isRegistrationLockedForCurrentUser()){
+    toast('രജിസ്ട്രേഷൻ ക്ലോസ് ചെയ്തിരിക്കുന്നു — ഇനി മാറ്റങ്ങൾ വരുത്താനാവില്ല');
+    return;
+  }
+  const student = STUDENTS.find(s=>s.id===EDIT_STUDENT_ID);
+  if(!student){ toast('കുട്ടിയെ കണ്ടെത്താനായില്ല'); return; }
+  const name = document.getElementById('editStudentName').value.trim();
+  const cls = document.getElementById('editStudentClass').value;
+  if(!name){ toast('കുട്ടിയുടെ പേര് നൽകുക'); return; }
+  if(!cls){ toast('ക്ലാസ് തിരഞ്ഞെടുക്കുക'); return; }
+  const checked = new Set(Array.from(document.querySelectorAll('#editItemChecklist input.editchk:checked')).map(c=>parseInt(c.value)));
+  if(!checked.size){ toast('ഒരു ഇനമെങ്കിലും തിരഞ്ഞെടുക്കുക'); return; }
+
+  student.name = name;
+  student.class = cls;
+
+  // Remove entries for items that were unticked.
+  ENTRIES = ENTRIES.filter(e=> e.studentId!==EDIT_STUDENT_ID || checked.has(e.itemCode));
+  // Add entries for newly ticked items.
+  checked.forEach(itemCode=>{
+    const already = ENTRIES.some(e=>e.studentId===EDIT_STUDENT_ID && e.itemCode===itemCode);
+    if(already) return;
+    const item = ITEMS.find(i=>i.code===itemCode);
+    if(!item) return;
+    ENTRIES.push({id:uid(), itemCode, itemName:item.name, cat:item.cat, schoolId:student.schoolId, schoolName:student.schoolName,
+      studentId:student.id, regNo:student.regNo, name:student.name, class:student.class||'', chest:''});
+  });
+  // Keep name/class copies on remaining entries in sync with the student record.
+  ENTRIES.forEach(e=>{ if(e.studentId===EDIT_STUDENT_ID){ e.name = student.name; e.class = student.class; } });
+
+  await saveStudents();
+  await saveEntries();
+  closeEditStudentModal();
+  renderEntries();
+  toast('കുട്ടിയുടെ വിവരങ്ങൾ അപ്ഡേറ്റ് ചെയ്തു ✓');
+}
+
 function populateEntryFilters(){
   const catSel = document.getElementById('entryFilterCat');
   if(!catSel.dataset.init){ populateItemCatFilter(catSel); catSel.dataset.init=1; catSel.addEventListener('change', ()=>{populateEntryFilterItems(); renderEntries();}); }
@@ -1720,70 +1853,130 @@ function renderEntries(){
   if(CURRENT_USER && CURRENT_USER.role==='school') list = list.filter(e=>e.schoolId===CURRENT_USER.schoolId);
   if(cat) list = list.filter(e=>e.cat===cat);
   if(itemCode) list = list.filter(e=>e.itemCode===parseInt(itemCode));
-  document.getElementById('entriesTbody').innerHTML = list.map(e=>`
-    <tr>
-      <td>${e.regNo||'-'}</td>
-      <td>${e.chest||'-'}</td>
-      <td class="malayalam">${e.name}</td>
-      <td>${e.class||'-'}</td>
-      <td class="malayalam">${e.schoolName}</td>
-      <td class="malayalam">${e.itemCode} — ${e.itemName}</td>
-      <td><button class="btn danger small" ${locked?'disabled':''} onclick="removeEntry('${e.id}')">നീക്കുക</button></td>
-    </tr>`).join('') || `<tr><td colspan="7" class="empty">എൻട്രികൾ ഇല്ല</td></tr>`;
+
+  // Group all entries belonging to the same registration number (student) into one row.
+  const groups = {};
+  const order = [];
+  list.forEach(e=>{
+    const key = e.studentId || e.regNo;
+    if(!groups[key]){ groups[key] = {regNo:e.regNo, name:e.name, class:e.class, schoolName:e.schoolName, schoolId:e.schoolId, studentId:e.studentId, items:[]}; order.push(key); }
+    groups[key].items.push(e);
+  });
+  document.getElementById('entriesTbody').innerHTML = order.map(key=>{
+    const g = groups[key];
+    const itemsLabel = g.items.map(e=>`${e.itemCode} — ${e.itemName}${e.chest?` (ചെസ്റ്റ്: ${e.chest})`:''}`).join(', ');
+    const chestLabel = g.items.map(e=>e.chest||'-').join(', ');
+    return `<tr>
+      <td>${g.regNo||'-'}</td>
+      <td>${chestLabel}</td>
+      <td class="malayalam">${g.name}</td>
+      <td>${g.class||'-'}</td>
+      <td class="malayalam">${g.schoolName}</td>
+      <td class="malayalam">${itemsLabel}</td>
+      <td><button class="btn ghost small malayalam" ${locked?'disabled':''} onclick="openEditStudentModal('${g.studentId}')">✏️ എഡിറ്റ്</button></td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="7" class="empty">എൻട്രികൾ ഇല്ല</td></tr>`;
 }
 document.getElementById('entryFilterItem').addEventListener('change', renderEntries);
 
 /* ============================================================
    PDF HELPERS
    ============================================================ */
+function waitForImages(container){
+  const imgs = Array.from(container.querySelectorAll('img'));
+  if(!imgs.length) return Promise.resolve();
+  return Promise.all(imgs.map(img=>{
+    if(img.complete && img.naturalWidth>0) return Promise.resolve();
+    return new Promise(res=>{ img.onload=res; img.onerror=res; setTimeout(res,3000); });
+  }));
+}
+/* Mobile browsers (esp. Chrome/Android) often fail to rasterize elements that
+   are positioned off-screen (e.g. left:-9999px) — html2canvas ends up
+   capturing a blank/white canvas. The reliable fix is to render the
+   printable content inside the real, on-screen viewport (briefly, behind a
+   full-screen white cover) instead of off-canvas. */
+function openCaptureSurface(innerHTML, widthPx){
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#fff;overflow:auto;-webkit-overflow-scrolling:touch;';
+  const inner = document.createElement('div');
+  inner.style.cssText = `background:#fff;width:${widthPx}px;max-width:none;padding:10px;`;
+  inner.innerHTML = innerHTML;
+  overlay.appendChild(inner);
+  document.body.appendChild(overlay);
+  return {overlay, inner};
+}
+function closeCaptureSurface(overlay){
+  if(overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+}
 function downloadElementAsPDF(el, filename){
   if(!el){ toast('ഡൗൺലോഡ് ചെയ്യാൻ ഒന്നും ലഭ്യമല്ല'); return; }
   html2pdf().set({
     margin:10,
     filename,
-    html2canvas:{scale:2},
+    html2canvas:{scale:2, scrollX:0, scrollY:0, useCORS:true},
     jsPDF:{unit:'mm', format:'a4', orientation:'portrait'}
   }).from(el).save();
 }
-function downloadSchoolEntriesPDF(schoolId){
+function groupEntriesByStudent(list){
+  const groups = {};
+  const order = [];
+  list.forEach(e=>{
+    const key = e.studentId || e.regNo;
+    if(!groups[key]){ groups[key] = {regNo:e.regNo, name:e.name, class:e.class, schoolName:e.schoolName, items:[]}; order.push(key); }
+    groups[key].items.push(e);
+  });
+  return order.map(k=>groups[k]);
+}
+async function downloadSchoolEntriesPDF(schoolId){
   const school = SCHOOLS.find(s=>s.id===schoolId);
   if(!school){ toast('സ്കൂൾ കണ്ടെത്താനായില്ല'); return; }
-  const list = ENTRIES.filter(e=>e.schoolId===schoolId);
-  const container = document.createElement('div');
-  container.style.cssText = 'position:fixed;left:-9999px;top:0;padding:14px;background:#fff;width:700px;';
-  container.innerHTML = `
+  const groups = groupEntriesByStudent(ENTRIES.filter(e=>e.schoolId===schoolId));
+  const html = `
     <h2 style="font-family:'Baloo 2',sans-serif;color:#0d4d47;margin:0 0 4px;">${school.name} (${school.code})</h2>
     <p style="margin:0 0 14px;color:#5c4713;">രജിസ്റ്റർ ചെയ്ത കുട്ടികളുടെ ലിസ്റ്റ് — കലാമൃതം 2026-27</p>
     <table style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead>
         <tr style="background:#efe2c8;">
           <th style="padding:6px 8px;border:1px solid #d8c39a;text-align:left;">രജി. നമ്പർ</th>
-          <th style="padding:6px 8px;border:1px solid #d8c39a;text-align:left;">ചെസ്റ്റ് നമ്പർ</th>
           <th style="padding:6px 8px;border:1px solid #d8c39a;text-align:left;">പേര്</th>
           <th style="padding:6px 8px;border:1px solid #d8c39a;text-align:left;">ക്ലാസ്</th>
-          <th style="padding:6px 8px;border:1px solid #d8c39a;text-align:left;">ഇനം</th>
-          <th style="padding:6px 8px;border:1px solid #d8c39a;text-align:left;">കാറ്റ.</th>
+          <th style="padding:6px 8px;border:1px solid #d8c39a;text-align:left;">ഇനങ്ങൾ</th>
         </tr>
       </thead>
       <tbody>
-        ${list.map(e=>`<tr>
-          <td style="padding:6px 8px;border:1px solid #eee;">${e.regNo||'-'}</td>
-          <td style="padding:6px 8px;border:1px solid #eee;">${e.chest||'-'}</td>
-          <td style="padding:6px 8px;border:1px solid #eee;">${e.name}</td>
-          <td style="padding:6px 8px;border:1px solid #eee;">${e.class||'-'}</td>
-          <td style="padding:6px 8px;border:1px solid #eee;">${e.itemCode} — ${e.itemName}</td>
-          <td style="padding:6px 8px;border:1px solid #eee;">${e.cat}</td>
-        </tr>`).join('') || '<tr><td colspan="6" style="padding:10px;">എൻട്രികളില്ല</td></tr>'}
+        ${groups.map(g=>`<tr>
+          <td style="padding:6px 8px;border:1px solid #eee;vertical-align:top;">${g.regNo||'-'}</td>
+          <td style="padding:6px 8px;border:1px solid #eee;vertical-align:top;">${g.name}</td>
+          <td style="padding:6px 8px;border:1px solid #eee;vertical-align:top;">${g.class||'-'}</td>
+          <td style="padding:6px 8px;border:1px solid #eee;">${g.items.map(e=>`${e.itemCode} — ${e.itemName}`).join(', ')}</td>
+        </tr>`).join('') || '<tr><td colspan="4" style="padding:10px;">എൻട്രികളില്ല</td></tr>'}
       </tbody>
     </table>`;
-  document.body.appendChild(container);
-  html2pdf().set({
-    margin:10,
-    filename:`${school.code}-entries.pdf`,
-    html2canvas:{scale:2},
-    jsPDF:{unit:'mm', format:'a4', orientation:'portrait'}
-  }).from(container).save().then(()=>{ document.body.removeChild(container); })
-    .catch(()=>{ document.body.removeChild(container); toast('PDF നിർമ്മാണം പരാജയപ്പെട്ടു'); });
+  const {overlay, inner} = openCaptureSurface(html, 700);
+  toast('PDF തയ്യാറാക്കുന്നു...');
+  try{
+    await waitForImages(inner);
+    await html2pdf().set({
+      margin:10,
+      filename:`${school.code}-entries.pdf`,
+      html2canvas:{scale:2, scrollX:0, scrollY:0, useCORS:true},
+      jsPDF:{unit:'mm', format:'a4', orientation:'portrait'}
+    }).from(inner).save();
+    toast('PDF ഡൗൺലോഡ് ചെയ്തു ✓');
+  }catch(e){
+    toast('PDF നിർമ്മാണം പരാജയപ്പെട്ടു');
+  }finally{
+    closeCaptureSurface(overlay);
+  }
+}
+function downloadSchoolEntriesExcel(schoolId){
+  const school = SCHOOLS.find(s=>s.id===schoolId);
+  if(!school){ toast('സ്കൂൾ കണ്ടെത്താനായില്ല'); return; }
+  const groups = groupEntriesByStudent(ENTRIES.filter(e=>e.schoolId===schoolId));
+  if(!groups.length){ toast('ഈ സ്കൂളിന് എൻട്രികളില്ല'); return; }
+  const aoa = [['രജി. നമ്പർ','പേര്','ക്ലാസ്','ഇനങ്ങൾ']];
+  groups.forEach(g=>aoa.push([g.regNo||'', g.name, g.class||'', g.items.map(e=>`${e.itemCode} — ${e.itemName}`).join(', ')]));
+  downloadAOAExcel(aoa, `${school.code}-entries.xlsx`, 'Entries');
 }
 
 /* ============================================================
@@ -2250,20 +2443,26 @@ function buildIdCardHTML(student){
     </table>
   </div>`;
 }
-function downloadIdCards(){
+async function downloadIdCards(){
   const schoolId = document.getElementById('idCardSchoolSelect').value;
   let list = STUDENTS.slice();
   if(schoolId) list = list.filter(s=>s.schoolId===schoolId);
   if(!list.length){ toast('കുട്ടികളെ കണ്ടെത്താനായില്ല'); return; }
-  const container = document.createElement('div');
-  container.style.cssText = 'position:fixed;left:-9999px;top:0;background:#fff;padding:10px;width:750px;';
-  container.innerHTML = list.map(buildIdCardHTML).join('');
-  document.body.appendChild(container);
-  html2pdf().set({
-    margin:8, filename:'id-cards.pdf',
-    html2canvas:{scale:2}, jsPDF:{unit:'mm', format:'a4', orientation:'portrait'}
-  }).from(container).save().then(()=>{ document.body.removeChild(container); })
-    .catch(()=>{ document.body.removeChild(container); toast('PDF നിർമ്മാണം പരാജയപ്പെട്ടു'); });
+  const html = list.map(buildIdCardHTML).join('');
+  const {overlay, inner} = openCaptureSurface(html, 750);
+  toast('ഐഡി കാർഡുകൾ തയ്യാറാക്കുന്നു...');
+  try{
+    await waitForImages(inner);
+    await html2pdf().set({
+      margin:8, filename:'id-cards.pdf',
+      html2canvas:{scale:2, scrollX:0, scrollY:0, useCORS:true}, jsPDF:{unit:'mm', format:'a4', orientation:'portrait'}
+    }).from(inner).save();
+    toast('ഐഡി കാർഡുകൾ ഡൗൺലോഡ് ചെയ്തു ✓');
+  }catch(e){
+    toast('PDF നിർമ്മാണം പരാജയപ്പെട്ടു');
+  }finally{
+    closeCaptureSurface(overlay);
+  }
 }
 
 function renderReportsTab(){
@@ -2487,12 +2686,12 @@ function downloadPdfDocument(type, filenamePrefix){
   if(!items.length){ toast('ഫിൽട്ടറുമായി പൊരുത്തപ്പെടുന്ന ഇനങ്ങളില്ല'); return Promise.resolve(); }
   const orientation = pdfOrientation();
   const container = document.createElement('div');
-  container.style.cssText = 'position:fixed;left:-9999px;top:0;background:#fff;width:' + (orientation==='landscape'?'950px':'700px') + ';';
+  container.style.cssText = 'position:absolute;left:-9999px;top:0;background:#fff;width:' + (orientation==='landscape'?'950px':'700px') + ';';
   container.innerHTML = buildPdfDocument(type, items);
   document.body.appendChild(container);
   return html2pdf().set({
     margin:8, filename:`${filenamePrefix}.pdf`,
-    html2canvas:{scale:2}, jsPDF:{unit:'mm', format:'a4', orientation}
+    html2canvas:{scale:2, scrollX:0, scrollY:0, useCORS:true}, jsPDF:{unit:'mm', format:'a4', orientation}
   }).from(container).save().then(()=>{ document.body.removeChild(container); })
     .catch(()=>{ document.body.removeChild(container); toast('PDF നിർമ്മാണം പരാജയപ്പെട്ടു'); });
 }
@@ -2533,11 +2732,11 @@ async function downloadAllReportsZip(){
     const types = [['call','call-sheet.pdf'],['score','score-sheet.pdf'],['mark','mark-sheet.pdf']];
     for(const [type, fname] of types){
       const container = document.createElement('div');
-      container.style.cssText = 'position:fixed;left:-9999px;top:0;background:#fff;width:' + (orientation==='landscape'?'950px':'700px') + ';';
+      container.style.cssText = 'position:absolute;left:-9999px;top:0;background:#fff;width:' + (orientation==='landscape'?'950px':'700px') + ';';
       container.innerHTML = buildPdfDocument(type, items);
       document.body.appendChild(container);
       const blob = await html2pdf().set({
-        margin:8, html2canvas:{scale:2}, jsPDF:{unit:'mm', format:'a4', orientation}
+        margin:8, html2canvas:{scale:2, scrollX:0, scrollY:0, useCORS:true}, jsPDF:{unit:'mm', format:'a4', orientation}
       }).from(container).outputPdf('blob');
       document.body.removeChild(container);
       zip.file(fname, blob);
