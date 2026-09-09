@@ -739,6 +739,17 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
         </table>
       </div>
     </div>
+
+    <h3 class="section-head malayalam" style="color:var(--bad);">അപകട മേഖല (DANGER ZONE)</h3>
+    <div class="card" style="border-color:var(--bad);background:#fff5f4;">
+      <p class="malayalam" style="margin:0 0 10px;font-size:.85rem;">
+        ⚠️ ഇത് സ്കൂളുകൾ, കുട്ടികൾ, എൻട്രികൾ, മാർക്കുകൾ, ഷെഡ്യൂൾ എന്നിവയുൾപ്പെടെ <b>എല്ലാ മത്സര ഡാറ്റയും എന്നേക്കുമായി</b> ഇല്ലാതാക്കും (കാറ്റഗറി/ഇനങ്ങളുടെ ലിസ്റ്റും ലോഗിൻ പാസ്‌വേഡുകളും മാറില്ല). ഈ പ്രവർത്തി തിരിച്ചെടുക്കാൻ കഴിയില്ല — പുതിയ വർഷത്തേക്ക് ഡാറ്റ പൂർണ്ണമായും ക്ലിയർ ചെയ്യാൻ മാത്രം ഉപയോഗിക്കുക.</p>
+      <label class="malayalam">ജില്ലാ അഡ്മിൻ പാസ്‌വേഡ്</label>
+      <input type="password" id="deleteConfirmPass" placeholder="നിലവിലെ പാസ്‌വേഡ് നൽകുക">
+      <label class="malayalam">സ്ഥിരീകരിക്കാൻ <code>DELETE ALL</code> എന്ന് ടൈപ്പ് ചെയ്യുക</label>
+      <input type="text" id="deleteConfirmText" placeholder="DELETE ALL">
+      <div style="margin-top:10px;"><button class="btn danger malayalam" onclick="deleteAllData()">🗑️ എല്ലാ ഡാറ്റയും ഡിലീറ്റ് ചെയ്യുക</button></div>
+    </div>
   </section>
 
   <!-- ============ ENTRIES ============ -->
@@ -1390,6 +1401,26 @@ async function changeDistrictPassword(){
   document.getElementById('curDistrictPass').value='';
   document.getElementById('newDistrictPass').value='';
   toast('പാസ്‌വേഡ് മാറ്റി ✓');
+}
+async function deleteAllData(){
+  const pass = document.getElementById('deleteConfirmPass').value;
+  const text = document.getElementById('deleteConfirmText').value.trim();
+  if(pass !== AUTH.districtPassword){ toast('പാസ്‌വേഡ് തെറ്റാണ്'); return; }
+  if(text !== 'DELETE ALL'){ toast('"DELETE ALL" എന്ന് കൃത്യമായി ടൈപ്പ് ചെയ്യുക'); return; }
+  if(!confirm('എല്ലാ സ്കൂളുകളും കുട്ടികളും എൻട്രികളും മാർക്കുകളും ഷെഡ്യൂളും എന്നേക്കുമായി ഇല്ലാതാകും. ഈ പ്രവർത്തി തിരിച്ചെടുക്കാൻ കഴിയില്ല. ഉറപ്പാണോ?')) return;
+  try{
+    SCHOOLS = []; STUDENTS = []; ENTRIES = []; SCORES = {}; SCHEDULE = {};
+    CONFIG.regCounter = 0; CONFIG.schoolCounters = {}; CONFIG.registrationClosed = false;
+    await Promise.all([saveSchools(), saveStudents(), saveEntries(), saveScoresRemote(), saveSchedule(), saveConfig()]);
+    document.getElementById('deleteConfirmPass').value='';
+    document.getElementById('deleteConfirmText').value='';
+    resetCategorySelectCaches();
+    renderHome(); renderSchools(); renderEntries(); renderItems();
+    renderUsersTab(); renderChampionship(); renderCategoryScoreboards();
+    toast('എല്ലാ ഡാറ്റയും ഡിലീറ്റ് ചെയ്തു ✓');
+  }catch(e){
+    toast('ഡിലീറ്റ് ചെയ്യുന്നതിൽ പിഴവ്');
+  }
 }
 function renderSchoolPassTable(){
   const tb = document.getElementById('schoolPassTbody');
