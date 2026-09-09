@@ -794,6 +794,7 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
         <select id="entryCat"></select>
         <input type="text" id="entryItemSearch" placeholder="ഇനം അല്ലെങ്കിൽ കോഡ് തിരയുക...">
       </div>
+      <div class="note malayalam" id="entryLimitNote" style="display:none;"></div>
       <div id="entryItemChecklist" class="table-wrap" style="max-height:260px;padding:6px 10px;"></div>
 
       <div style="margin-top:10px;"><button class="btn" id="addEntryBtn" onclick="addEntry()">+ തിരഞ്ഞെടുത്ത ഇനങ്ങൾ ചേർക്കുക</button></div>
@@ -1088,6 +1089,60 @@ it(326,"SANGHAGANAM (SANSKRIT)","III","on","Common","",7),
 it(327,"GANALAPANAM (SANSKRIT)","III","on","Common","",1),
 
 ];
+
+/* ============================================================
+   CLASS → CATEGORY AUTO-DETECTION + PER-CATEGORY ITEM LIMITS
+   ------------------------------------------------------------
+   CATS[c].cls holds a roman-numeral class range like "I–II" or
+   "VI–VII"; this maps a numeric class (1,2,3...) to the category
+   code whose range contains it, so picking a class in the
+   registration form can auto-select the right category and lock
+   out items from other categories.
+   ============================================================ */
+function romanToInt(s){
+  if(!s) return null;
+  s = String(s).trim().toUpperCase();
+  const map = {I:1,V:5,X:10};
+  let result = 0;
+  for(let i=0;i<s.length;i++){
+    const cur = map[s[i]], next = map[s[i+1]];
+    if(!cur) return null;
+    if(next && cur < next) result -= cur; else result += cur;
+  }
+  return result || null;
+}
+function categoryForClass(cls){
+  const n = parseInt(cls);
+  if(!n) return '';
+  for(const c of Object.keys(CATS)){
+    const parts = (CATS[c].cls||'').split(/[–—-]/).map(s=>s.trim()).filter(Boolean);
+    if(parts.length>=2){
+      const lo = romanToInt(parts[0]), hi = romanToInt(parts[parts.length-1]);
+      if(lo!==null && hi!==null && n>=lo && n<=hi) return c;
+    } else if(parts.length===1){
+      const only = romanToInt(parts[0]);
+      if(only!==null && n===only) return c;
+    }
+  }
+  return '';
+}
+// Max on-stage ("stage" !== "off") single vs group items a student may take per
+// category. Off-stage items (drawing, essay, etc.) are never limited.
+const CATEGORY_ITEM_LIMITS = {
+  I:  {single:2, group:1},
+  II: {single:3, group:2},
+  III:{single:3, group:2}
+};
+function currentStudentStageCounts(studentId, cat){
+  const counts = {single:0, group:0};
+  if(!studentId) return counts;
+  ENTRIES.filter(e=>e.studentId===studentId).forEach(e=>{
+    const it = ITEMS.find(x=>x.code===e.itemCode);
+    if(!it || it.cat!==cat || it.stage==='off') return;
+    if(isGroupItem(it)) counts.group++; else counts.single++;
+  });
+  return counts;
+}
 
 // Judging rubrics keyed loosely by item-name pattern (reference only, generic 100-mark totals)
 const RUBRICS = [
@@ -1794,9 +1849,24 @@ function genRegNo(schoolId, schoolCode){
 function populateEntryCatSelect(){
   const sel = document.getElementById('entryCat');
   if(sel.dataset.init) return;
-  sel.innerHTML = '<option value="">എല്ലാ കാറ്റഗറിയും</option>' + Object.keys(CATS).map(c=>`<option value="${c}">${CATS[c].name} (${c})</option>`).join('');
-  sel.addEventListener('change', renderEntryItemChecklist);
+  sel.innerHTML = '<option value="">ആദ്യം ക്ലാസ് തിരഞ്ഞെടുക്കുക</option>' + Object.keys(CATS).map(c=>`<option value="${c}">${CATS[c].name} (${c})</option>`).join('');
+  sel.addEventListener('change', ()=>{ renderEntryItemChecklist(); });
   sel.dataset.init = 1;
+}
+// Locks the category select to the class-derived category (cat==='' unlocks it,
+// e.g. while no class/student is chosen yet) and re-renders the checklist so only
+// that category's items are even visible/selectable.
+function applyAutoCategory(cat){
+  populateEntryCatSelect();
+  const sel = document.getElementById('entryCat');
+  if(cat && CATS[cat]){
+    sel.value = cat;
+    sel.disabled = true;
+  } else {
+    sel.value = '';
+    sel.disabled = false;
+  }
+  renderEntryItemChecklist();
 }
 function renderEntryItemChecklist(){
   populateEntryCatSelect();
@@ -1811,9 +1881,53 @@ function renderEntryItemChecklist(){
     <label style="display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid var(--line);font-size:.83rem;">
       <input type="checkbox" class="entchk" value="${i.code}" ${checkedNow.has(String(i.code))?'checked':''}>
       <span class="malayalam">${i.code} — ${i.name} <span style="opacity:.6;">(${i.cat} · ${i.gender})</span></span>
-    </label>`).join('') || `<div class="empty malayalam">ഇനങ്ങൾ കണ്ടെത്തിയില്ല</div>`;
+    </label>`).join('') || `<div class="empty malayalam">${cat? 'ഇനങ്ങൾ കണ്ടെത്തിയില്ല' : 'ഇനങ്ങൾ കാണാൻ ആദ്യം ക്ലാസ് തിരഞ്ഞെടുക്കുക'}</div>`;
+  updateEntryChecklistLimits();
+}
+if(!document.getElementById('entryItemChecklist').dataset.limitInit){
+  document.getElementById('entryItemChecklist').addEventListener('change', e=>{
+    if(e.target.classList.contains('entchk')) updateEntryChecklistLimits();
+  });
+  document.getElementById('entryItemChecklist').dataset.limitInit = 1;
+}
+// Enforces "N single + M group on-stage items per category" (off-stage items are
+// never limited): disables checkboxes that would push either count past its cap,
+// counting both already-saved entries for this student and boxes checked right now.
+function updateEntryChecklistLimits(){
+  const cat = document.getElementById('entryCat').value;
+  const box = document.getElementById('entryItemChecklist');
+  const noteEl = document.getElementById('entryLimitNote');
+  const limits = CATEGORY_ITEM_LIMITS[cat];
+  if(!limits){
+    box.querySelectorAll('input.entchk').forEach(c=>c.disabled=false);
+    if(noteEl) noteEl.style.display='none';
+    return;
+  }
+  const studentSel = document.getElementById('entryStudentSelect') ? document.getElementById('entryStudentSelect').value : '';
+  const studentId = (studentSel && studentSel!=='new') ? studentSel : null;
+  const existing = currentStudentStageCounts(studentId, cat);
+  let checkedSingle=0, checkedGroup=0;
+  box.querySelectorAll('input.entchk:checked').forEach(c=>{
+    const it = ITEMS.find(i=>i.code===parseInt(c.value));
+    if(!it || it.stage==='off') return;
+    if(isGroupItem(it)) checkedGroup++; else checkedSingle++;
+  });
+  const totalSingle = existing.single + checkedSingle;
+  const totalGroup = existing.group + checkedGroup;
+  box.querySelectorAll('input.entchk').forEach(c=>{
+    const it = ITEMS.find(i=>i.code===parseInt(c.value));
+    if(!it || it.stage==='off' || c.checked){ c.disabled=false; return; }
+    c.disabled = isGroupItem(it) ? (totalGroup>=limits.group) : (totalSingle>=limits.single);
+  });
+  if(noteEl){
+    noteEl.style.display='block';
+    noteEl.textContent = `📌 ${CATS[cat]?CATS[cat].name:cat} കാറ്റഗറിയിൽ ഓൺ-സ്റ്റേജ് പരമാവധി: ${limits.single} സിംഗിൾ ഇനം + ${limits.group} ഗ്രൂപ്പ് ഇനം (നിലവിൽ: ${totalSingle}/${limits.single} സിംഗിൾ, ${totalGroup}/${limits.group} ഗ്രൂപ്പ്). ഓഫ്-സ്റ്റേജ് ഇനങ്ങൾക്ക് ഈ പരിധി ബാധകമല്ല.`;
+  }
 }
 document.getElementById('entryItemSearch').addEventListener('input', renderEntryItemChecklist);
+document.getElementById('entryClass').addEventListener('change', ()=>{
+  applyAutoCategory(categoryForClass(document.getElementById('entryClass').value));
+});
 function populateEntrySchoolSelect(){
   const sel = document.getElementById('entrySchool');
   sel.innerHTML = SCHOOLS.map(s=>`<option value="${s.id}">${s.code} — ${s.name}</option>`).join('') || `<option value="">സ്കൂൾ ചേർക്കുക</option>`;
@@ -1843,7 +1957,12 @@ function toggleNewStudentFields(){
     const st = STUDENTS.find(s=>s.id===sel.value);
     note.style.display='block';
     note.innerHTML = st? `രജിസ്റ്റർ നമ്പർ: <b>${st.regNo}</b>` : '';
-  } else { note.style.display='none'; }
+    applyAutoCategory(st? categoryForClass(st.class) : '');
+  } else {
+    note.style.display='none';
+    document.getElementById('entryClass').value = '';
+    applyAutoCategory('');
+  }
 }
 function resizeImageToDataURL(file, maxW=220, maxH=280){
   return new Promise((resolve, reject)=>{
@@ -1903,17 +2022,30 @@ async function addEntry(){
   const checked = Array.from(document.querySelectorAll('#entryItemChecklist input.entchk:checked')).map(c=>parseInt(c.value));
   if(!checked.length){ toast('ഒരു ഇനമെങ്കിലും തിരഞ്ഞെടുക്കുക'); return; }
 
-  let added = 0;
+  let added = 0, skipped = [];
   checked.forEach(itemCode=>{
     const item = ITEMS.find(i=>i.code===itemCode);
     if(!item) return;
     const already = ENTRIES.some(e=>e.itemCode===itemCode && e.studentId===student.id);
     if(already) return;
+    // Safety-net re-check of the on-stage single/group caps (the checklist already
+    // disables boxes past the limit, but ENTRIES may have changed since it rendered).
+    if(item.stage!=='off'){
+      const limits = CATEGORY_ITEM_LIMITS[item.cat];
+      if(limits){
+        const counts = currentStudentStageCounts(student.id, item.cat);
+        if(isGroupItem(item) && counts.group>=limits.group){ skipped.push(item); return; }
+        if(!isGroupItem(item) && counts.single>=limits.single){ skipped.push(item); return; }
+      }
+    }
     ENTRIES.push({id:uid(), itemCode, itemName:item.name, cat:item.cat, schoolId, schoolName:school.name,
       studentId:student.id, regNo:student.regNo, name:student.name, class:student.class||'', chest:''});
     added++;
   });
-  if(!added){ toast('തിരഞ്ഞെടുത്ത ഇനങ്ങളെല്ലാം നേരത്തെ ചേർത്തതാണ്'); return; }
+  if(!added){
+    toast(skipped.length ? 'പരിധി കവിഞ്ഞതിനാൽ ഇനങ്ങളൊന്നും ചേർത്തില്ല' : 'തിരഞ്ഞെടുത്ത ഇനങ്ങളെല്ലാം നേരത്തെ ചേർത്തതാണ്');
+    return;
+  }
 
   if(isNewStudent){
     STUDENTS.push(student);
@@ -1926,7 +2058,8 @@ async function addEntry(){
   if(document.getElementById('entryPhoto')) document.getElementById('entryPhoto').value='';
   document.querySelectorAll('#entryItemChecklist input.entchk:checked').forEach(c=>c.checked=false);
   populateEntryStudentSelect();
-  toast(`${added} ഇനങ്ങൾ ചേർത്തു ✓ (രജി. നമ്പർ: ${student.regNo})`);
+  const skipNote = skipped.length ? ` (പരിധി കവിഞ്ഞതിനാൽ ${skipped.length} ഇനം ചേർത്തില്ല)` : '';
+  toast(`${added} ഇനങ്ങൾ ചേർത്തു ✓ (രജി. നമ്പർ: ${student.regNo})${skipNote}`);
   renderEntries();
 }
 async function removeEntry(id){
@@ -2400,16 +2533,47 @@ function ordinal(n){
   const s=["th","st","nd","rd"], v=n%100;
   return n + (s[(v-20)%10]||s[v]||s[0]);
 }
+// Group/team items (e.g. NADANPATTU, THIRUVATHIRA, SANGHAGANAM — item.n > 1 or a
+// combined count like "8+2") are judged and awarded as one school performance,
+// not as separate individual competitors.
+function isGroupItem(item){
+  if(!item) return false;
+  if(typeof item.n === 'string') return true;
+  return Number(item.n) > 1;
+}
 function computeResult(code){
   const keys = judgeKeys();
-  const list = ENTRIES.filter(e=>e.itemCode===code).map(e=>{
+  const item = ITEMS.find(i=>i.code===code);
+  const scored = ENTRIES.filter(e=>e.itemCode===code).map(e=>{
     const s = SCORES[e.id] || {};
     const nums = keys.map(k=>s[k]).filter(v=>v!=='' && v!==undefined && v!==null).map(Number);
     const avg = nums.length? nums.reduce((a,b)=>a+b,0)/nums.length : null;
-    const grade = avg===null? null : (avg>=80?'A':avg>=60?'B':avg>=40?'C':null);
-    const points = grade==='A'?5:grade==='B'?3:grade==='C'?1:0;
-    return {...e, avg, grade, points};
+    return {...e, avg};
   });
+  let list;
+  if(isGroupItem(item)){
+    // Group/team items (item.n > 1, e.g. NADANPATTU, THIRUVATHIRA, SANGHAGANAM) are one
+    // performance per school — collapse all participating members into a single
+    // school-level result so the school gets ONE grade/point, not one per child.
+    const bySchool = {}; const order = [];
+    scored.forEach(e=>{
+      if(!bySchool[e.schoolId]){ bySchool[e.schoolId] = {schoolId:e.schoolId, schoolName:e.schoolName, avgs:[]}; order.push(e.schoolId); }
+      if(e.avg!==null) bySchool[e.schoolId].avgs.push(e.avg);
+    });
+    list = order.map(sid=>{
+      const g = bySchool[sid];
+      const avg = g.avgs.length? g.avgs.reduce((a,b)=>a+b,0)/g.avgs.length : null;
+      const grade = avg===null? null : (avg>=80?'A':avg>=60?'B':avg>=40?'C':null);
+      const points = grade==='A'?5:grade==='B'?3:grade==='C'?1:0;
+      return {schoolId:g.schoolId, schoolName:g.schoolName, avg, grade, points, isGroup:true};
+    });
+  } else {
+    list = scored.map(e=>{
+      const grade = e.avg===null? null : (e.avg>=80?'A':e.avg>=60?'B':e.avg>=40?'C':null);
+      const points = grade==='A'?5:grade==='B'?3:grade==='C'?1:0;
+      return {...e, grade, points};
+    });
+  }
   list.sort((a,b)=> (b.avg||-1) - (a.avg||-1));
   return list;
 }
@@ -2418,12 +2582,13 @@ function renderResultTable(){
   if(!code){ document.getElementById('resultBox').innerHTML = `<div class="empty">ഇനം തിരഞ്ഞെടുക്കുക</div>`; return; }
   const list = computeResult(code);
   const item = ITEMS.find(i=>i.code===code);
-  let html = `<div class="table-wrap"><table><thead><tr><th>റാങ്ക്</th><th>ചെസ്റ്റ്#</th><th>പേര്</th><th>സ്കൂൾ</th><th>%</th><th>ഗ്രേഡ്</th><th>പോയിന്റ്</th></tr></thead><tbody>`;
-  if(!list.length){ html += `<tr><td colspan="7" class="empty">ഫലങ്ങളില്ല</td></tr>`; }
+  const group = isGroupItem(item);
+  let html = `<div class="table-wrap"><table><thead><tr><th>റാങ്ക്</th>${group?'':'<th>ചെസ്റ്റ്#</th><th>പേര്</th>'}<th>സ്കൂൾ</th><th>%</th><th>ഗ്രേഡ്</th><th>പോയിന്റ്</th></tr></thead><tbody>`;
+  if(!list.length){ html += `<tr><td colspan="${group?5:7}" class="empty">ഫലങ്ങളില്ല</td></tr>`; }
   list.forEach((r,idx)=>{
     const gc = r.grade==='A'?'grade-A':r.grade==='B'?'grade-B':r.grade==='C'?'grade-C':'';
     html += `<tr class="${idx===0 && r.grade?'rank-1':''}">
-      <td>${r.avg!==null? ordinal(idx+1) : '-'}</td><td>${r.chest||'-'}</td><td class="malayalam">${r.name}</td><td class="malayalam">${r.schoolName}</td>
+      <td>${r.avg!==null? ordinal(idx+1) : '-'}</td>${group?'':`<td>${r.chest||'-'}</td><td class="malayalam">${r.name}</td>`}<td class="malayalam">${r.schoolName}</td>
       <td>${r.avg!==null? r.avg.toFixed(1):'-'}</td>
       <td class="${gc}">${r.grade||'-'}</td>
       <td>${r.points}</td>
@@ -2431,7 +2596,9 @@ function renderResultTable(){
   });
   html += `</tbody></table></div>`;
   if(list[0] && list[0].grade==='A'){
-    html += `<div class="note">🏅 <b class="malayalam">${list[0].name}</b> (${list[0].schoolName}) A ഗ്രേഡോടെ ഒന്നാം സ്ഥാനം നേടി — സംസ്ഥാനതല മത്സരത്തിന് യോഗ്യത നേടി.</div>`;
+    html += group
+      ? `<div class="note">🏅 <b class="malayalam">${list[0].schoolName}</b> A ഗ്രേഡോടെ ഒന്നാം സ്ഥാനം നേടി — സംസ്ഥാനതല മത്സരത്തിന് യോഗ്യത നേടി.</div>`
+      : `<div class="note">🏅 <b class="malayalam">${list[0].name}</b> (${list[0].schoolName}) A ഗ്രേഡോടെ ഒന്നാം സ്ഥാനം നേടി — സംസ്ഥാനതല മത്സരത്തിന് യോഗ്യത നേടി.</div>`;
   }
   document.getElementById('resultBox').innerHTML = html;
 }
@@ -3140,9 +3307,10 @@ function renderPublicEventResults(){
     item=exact||matches[0];
   }
   const list=computeResult(item.code);
+  const group=isGroupItem(item);
   let html=`<div class="public-result-title malayalam">${itemLabel(item)}</div>`;
-  html+=`<div class="table-wrap"><table><thead><tr><th>റാങ്ക്</th><th>ചെസ്റ്റ്#</th><th class="malayalam">പേര്</th><th class="malayalam">സ്കൂൾ</th><th>%</th><th>ഗ്രേഡ്</th><th>പോയിന്റ്</th></tr></thead><tbody>`;
-  html+=list.map((r,idx)=>{const gc=r.grade==='A'?'grade-A':r.grade==='B'?'grade-B':r.grade==='C'?'grade-C':'';return `<tr class="${idx===0&&r.grade?'rank-1':''}"><td>${r.avg!==null?ordinal(idx+1):'-'}</td><td>${r.chest||'-'}</td><td class="malayalam">${r.name}</td><td class="malayalam">${r.schoolName}</td><td>${r.avg!==null?r.avg.toFixed(1):'-'}</td><td class="${gc}">${r.grade||'-'}</td><td>${r.points}</td></tr>`}).join('')||'<tr><td colspan="7" class="empty malayalam">ഫലങ്ങളില്ല</td></tr>';
+  html+=`<div class="table-wrap"><table><thead><tr><th>റാങ്ക്</th>${group?'':'<th>ചെസ്റ്റ്#</th><th class="malayalam">പേര്</th>'}<th class="malayalam">സ്കൂൾ</th><th>%</th><th>ഗ്രേഡ്</th><th>പോയിന്റ്</th></tr></thead><tbody>`;
+  html+=list.map((r,idx)=>{const gc=r.grade==='A'?'grade-A':r.grade==='B'?'grade-B':r.grade==='C'?'grade-C':'';return `<tr class="${idx===0&&r.grade?'rank-1':''}"><td>${r.avg!==null?ordinal(idx+1):'-'}</td>${group?'':`<td>${r.chest||'-'}</td><td class="malayalam">${r.name}</td>`}<td class="malayalam">${r.schoolName}</td><td>${r.avg!==null?r.avg.toFixed(1):'-'}</td><td class="${gc}">${r.grade||'-'}</td><td>${r.points}</td></tr>`}).join('')||`<tr><td colspan="${group?5:7}" class="empty malayalam">ഫലങ്ങളില്ല</td></tr>`;
   html+='</tbody></table></div>';
   if(!selectedCode && matches.length>1){html+=`<div class="public-mini-note malayalam">${matches.length} ഇനങ്ങൾ പൊരുത്തപ്പെട്ടു — താഴെയുള്ള ലിസ്റ്റിൽ നിന്ന് കൃത്യമായ ഇനം തിരഞ്ഞെടുക്കുക.</div>`;}
   box.innerHTML=html;
