@@ -2504,21 +2504,43 @@ function renderScoringTable(){
   } else { rubricBox.innerHTML=''; }
 
   const keys = judgeKeys();
-  document.getElementById('scoringThead').innerHTML = `<tr><th class="malayalam">രജി. നമ്പർ</th><th class="malayalam">ചെസ്റ്റ് നമ്പർ</th>` +
+  const group = isGroupItem(item);
+  document.getElementById('scoringThead').innerHTML = `<tr><th class="malayalam">${group?'സ്കൂൾ കോഡ്':'രജി. നമ്പർ'}</th><th class="malayalam">ചെസ്റ്റ് നമ്പർ</th>` +
     keys.map((k,idx)=>`<th class="malayalam">ജഡ്ജ് ${idx+1}</th>`).join('') + `<th>%</th><th class="malayalam">ഗ്രേഡ്</th></tr>`;
 
-  const list = ENTRIES.filter(e=>e.itemCode===code);
-  document.getElementById('scoringTbody').innerHTML = list.map(e=>{
-    const s = SCORES[e.id] || {};
+  const allEntries = ENTRIES.filter(e=>e.itemCode===code);
+  // Group/team items: one row per SCHOOL (school code + one shared chest number +
+  // one set of marks for the whole team), instead of one row per team member.
+  // Marks/chest entered here are written to every member's underlying entry so the
+  // existing per-entry aggregation (computeResult, PDFs, etc.) keeps working unchanged.
+  let rows;
+  if(group){
+    const bySchool = {}; const order = [];
+    allEntries.forEach(e=>{
+      if(!bySchool[e.schoolId]){ bySchool[e.schoolId] = {schoolId:e.schoolId, schoolName:e.schoolName, entries:[]}; order.push(e.schoolId); }
+      bySchool[e.schoolId].entries.push(e);
+    });
+    rows = order.map(sid=>{
+      const g = bySchool[sid];
+      const school = SCHOOLS.find(s=>s.id===sid);
+      const withChest = g.entries.find(e=>e.chest);
+      return {key:sid, label: school? school.code : g.schoolName, chest: withChest?withChest.chest:'', entries:g.entries, primaryId:g.entries[0].id};
+    });
+  } else {
+    rows = allEntries.map(e=>({key:e.id, label:e.regNo||'-', chest:e.chest, entries:[e], primaryId:e.id}));
+  }
+
+  document.getElementById('scoringTbody').innerHTML = rows.map(r=>{
+    const s = SCORES[r.primaryId] || {};
     const vals = keys.map(k=>Number(s[k])).filter((v,idx)=>!isNaN(v) && s[keys[idx]]!=='' && s[keys[idx]]!==undefined);
     const avg = vals.length? (vals.reduce((a,b)=>a+b,0)/vals.length) : null;
     const pct = avg!==null? avg.toFixed(1) : '-';
     const grade = avg===null? '-' : (avg>=80?'A':avg>=60?'B':avg>=40?'C':'—');
     const gc = grade==='A'?'grade-A':grade==='B'?'grade-B':grade==='C'?'grade-C':'';
     const judgeCells = keys.map(k=>`<td><input type="number" min="0" max="100" class="jscore" data-j="${k}" value="${s[k]||''}" style="width:60px;padding:5px;"></td>`).join('');
-    return `<tr data-entry="${e.id}">
-      <td>${e.regNo||'-'}</td>
-      <td><input type="text" class="chestInput" value="${e.chest||''}" placeholder="നമ്പർ നൽകുക" style="width:80px;padding:5px;"></td>
+    return `<tr data-key="${r.key}">
+      <td class="malayalam">${r.label}</td>
+      <td><input type="text" class="chestInput" value="${r.chest||''}" placeholder="നമ്പർ നൽകുക" style="width:80px;padding:5px;"></td>
       ${judgeCells}
       <td>${pct}</td>
       <td class="${gc}">${grade}</td>
@@ -2526,21 +2548,24 @@ function renderScoringTable(){
   }).join('') || `<tr><td colspan="${2+keys.length+2}" class="empty">ഈ ഇനത്തിൽ എൻട്രികൾ ഇല്ല</td></tr>`;
 
   document.querySelectorAll('#scoringTbody tr').forEach(tr=>{
+    const row = rows.find(r=>r.key===tr.dataset.key);
+    if(!row) return;
     const chestInp = tr.querySelector('.chestInput');
     if(chestInp){
       chestInp.addEventListener('input', ()=>{
-        const eid = tr.dataset.entry;
-        const ent = ENTRIES.find(x=>x.id===eid);
-        if(ent) ent.chest = chestInp.value.trim();
+        row.entries.forEach(ent=>{ ent.chest = chestInp.value.trim(); });
       });
     }
     tr.querySelectorAll('.jscore').forEach(inp=>{
       inp.addEventListener('input', ()=>{
-        const eid = tr.dataset.entry;
-        if(!SCORES[eid]) SCORES[eid]={};
-        SCORES[eid][inp.dataset.j] = inp.value;
-        // live recompute this row
-        const nums = keys.map(k=>SCORES[eid][k]).filter(v=>v!=='' && v!==undefined).map(Number).filter(v=>!isNaN(v));
+        row.entries.forEach(ent=>{
+          if(!SCORES[ent.id]) SCORES[ent.id]={};
+          SCORES[ent.id][inp.dataset.j] = inp.value;
+        });
+        // live recompute this row (all member entries share identical marks, so the
+        // primary entry's tally represents the whole team)
+        const s2 = SCORES[row.primaryId];
+        const nums = keys.map(k=>s2[k]).filter(v=>v!=='' && v!==undefined).map(Number).filter(v=>!isNaN(v));
         const avg = nums.length? nums.reduce((a,b)=>a+b,0)/nums.length : null;
         const pctCell = tr.children[2+keys.length]; const gradeCell = tr.children[2+keys.length+1];
         if(avg!==null){
@@ -2610,17 +2635,31 @@ function computeResult(code){
       const g = bySchool[sid];
       const avg = g.avgs.length? g.avgs.reduce((a,b)=>a+b,0)/g.avgs.length : null;
       const grade = avg===null? null : (avg>=80?'A':avg>=60?'B':avg>=40?'C':null);
-      const points = grade==='A'?5:grade==='B'?3:grade==='C'?1:0;
-      return {schoolId:g.schoolId, schoolName:g.schoolName, avg, grade, points, isGroup:true};
+      const gradePoints = grade==='A'?5:grade==='B'?3:grade==='C'?1:0;
+      return {schoolId:g.schoolId, schoolName:g.schoolName, avg, grade, gradePoints, isGroup:true};
     });
   } else {
     list = scored.map(e=>{
       const grade = e.avg===null? null : (e.avg>=80?'A':e.avg>=60?'B':e.avg>=40?'C':null);
-      const points = grade==='A'?5:grade==='B'?3:grade==='C'?1:0;
-      return {...e, grade, points};
+      const gradePoints = grade==='A'?5:grade==='B'?3:grade==='C'?1:0;
+      return {...e, grade, gradePoints};
     });
   }
   list.sort((a,b)=> (b.avg||-1) - (a.avg||-1));
+  // Place bonus on top of grade points — 1st place +5, 2nd +3, 3rd +1 — so e.g. a
+  // 1st-place finisher who also scored Grade A earns 5 (grade) + 5 (place) = 10.
+  // Only entries with an actual average (i.e. actually judged) can win a place.
+  const PLACE_BONUS = [5,3,1];
+  let placeSlot = 0;
+  list.forEach(r=>{
+    let placePoints = 0;
+    if(r.avg !== null){
+      if(placeSlot < PLACE_BONUS.length) placePoints = PLACE_BONUS[placeSlot];
+      placeSlot++;
+    }
+    r.placePoints = placePoints;
+    r.points = r.gradePoints + placePoints;
+  });
   return list;
 }
 function renderResultTable(){
