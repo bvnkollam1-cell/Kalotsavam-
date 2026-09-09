@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <!-- Firebase Realtime Database: replaces the Claude-artifact-only window.storage API so this
      page works as a plain static HTML file (e.g. hosted on GitHub Pages) with live shared data. -->
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
@@ -474,13 +475,7 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
       <div class="table-wrap" style="max-height:none;">
         <table>
           <thead><tr><th>കാറ്റഗറി</th><th>പേര്</th><th>ക്ലാസ്സ്</th></tr></thead>
-          <tbody>
-            <tr><td><span class="badge I">I</span></td><td>ശിശു (SISU)</td><td>ഒന്ന് മുതൽ നാല് വരെ (I–IV)</td></tr>
-            <tr><td><span class="badge II">II</span></td><td>ബാല (BALA)</td><td>അഞ്ച് മുതൽ ഏഴ് വരെ (V–VII)</td></tr>
-            <tr><td><span class="badge III">III</span></td><td>കിഷോർ (KISHORE)</td><td>എട്ട് മുതൽ പത്ത് വരെ (VIII–X)</td></tr>
-            <tr><td><span class="badge IV">IV</span></td><td>തരുൺ (THARUN)</td><td>പതിനൊന്ന് മുതൽ പന്ത്രണ്ട് വരെ (XI–XII)</td></tr>
-            <tr><td><span class="badge V">V</span></td><td>പൊതു (Common)</td><td>മൂന്ന് മുതൽ പന്ത്രണ്ട് വരെ (III–XII) — ഘോഷ് മാത്രം</td></tr>
-          </tbody>
+          <tbody id="homeCatsTbody"></tbody>
         </table>
       </div>
     </div>
@@ -518,6 +513,93 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
         </table>
       </div>
       <p style="font-size:.72rem;color:#8a7a5f;margin-top:8px;">ആകെ <span id="itemCount">0</span> ഇനങ്ങൾ. ഈ പട്ടിക കലാമൃതം-2026 ൽ നിന്നും എടുത്തതാണ്.</p>
+    </div>
+
+    <!-- ===== CATEGORY MANAGEMENT (district admin only) ===== -->
+    <div class="card" id="catAdminCard" style="display:none;">
+      <h3 class="section-head malayalam" style="margin-top:0;">കാറ്റഗറി മാനേജ്മെന്റ്</h3>
+      <div class="table-wrap" style="max-height:220px;">
+        <table>
+          <thead><tr><th>കോഡ്</th><th class="malayalam">പേര്</th><th>ക്ലാസ്സ്</th><th></th></tr></thead>
+          <tbody id="catAdminTbody"></tbody>
+        </table>
+      </div>
+      <label class="malayalam" style="margin-top:14px;">പുതിയ കാറ്റഗറി ചേർക്കുക</label>
+      <div class="grid2">
+        <div>
+          <label>കാറ്റഗറി കോഡ്</label>
+          <input type="text" id="newCatCode" placeholder="ഉദാ: VI">
+        </div>
+        <div>
+          <label class="malayalam">പേര്</label>
+          <input type="text" id="newCatName" placeholder="ഉദാ: സീനിയർ (SENIOR)">
+        </div>
+      </div>
+      <div class="grid2">
+        <div>
+          <label class="malayalam">ക്ലാസ്സ്</label>
+          <input type="text" id="newCatCls" placeholder="ഉദാ: XI–XII">
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="btn" style="width:100%;" onclick="addCategory()">+ കാറ്റഗറി ചേർക്കുക</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== ITEM MANAGEMENT within category (district admin only) ===== -->
+    <div class="card" id="itemAdminCard" style="display:none;">
+      <h3 class="section-head malayalam" style="margin-top:0;">ഇനം ചേർക്കുക / നീക്കുക</h3>
+      <div class="grid2">
+        <div>
+          <label class="malayalam">കാറ്റഗറി</label>
+          <select id="newItemCat"></select>
+        </div>
+        <div>
+          <label>കോഡ്</label>
+          <input type="text" id="newItemCode" placeholder="ഉദാ: 601">
+        </div>
+      </div>
+      <div class="grid2">
+        <div>
+          <label class="malayalam">ഇനത്തിന്റെ പേര്</label>
+          <input type="text" id="newItemName" placeholder="ഉദാ: കഥാപ്രസംഗം">
+        </div>
+        <div>
+          <label>Stage</label>
+          <select id="newItemStage"><option value="on">On Stage</option><option value="off">Off Stage</option></select>
+        </div>
+      </div>
+      <div class="grid2">
+        <div>
+          <label>Gender</label>
+          <select id="newItemGender"><option value="Common">Common</option><option value="Boy">Boy</option><option value="Girl">Girl</option></select>
+        </div>
+        <div>
+          <label class="malayalam">സമയം</label>
+          <input type="text" id="newItemTime" placeholder="ഉദാ: 5 മിനിറ്റ്">
+        </div>
+      </div>
+      <div class="grid2">
+        <div>
+          <label class="malayalam">എണ്ണം (Nos)</label>
+          <input type="text" id="newItemN" value="1">
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="btn" style="width:100%;" onclick="addItemToCategory()">+ ഇനം ചേർക്കുക</button>
+        </div>
+      </div>
+
+      <label class="malayalam" style="margin-top:14px;">നിലവിലുള്ള ഇനങ്ങൾ (നീക്കം ചെയ്യാൻ)</label>
+      <div class="filters">
+        <select id="itemAdminCatFilter"><option value="">എല്ലാ കാറ്റഗറിയും</option></select>
+        <input type="text" id="itemAdminSearch" placeholder="ഇനം അല്ലെങ്കിൽ കോഡ് തിരയുക...">
+      </div>
+      <div class="table-wrap" style="max-height:260px;">
+        <table>
+          <thead><tr><th>കോഡ്</th><th class="malayalam">ഇനം</th><th>കാറ്റ.</th><th></th></tr></thead>
+          <tbody id="itemAdminTbody"></tbody>
+        </table>
+      </div>
     </div>
   </section>
 
@@ -834,7 +916,7 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
         <option value="a3">A3 — ഒരു ഷീറ്റിൽ 8 കാർഡ്</option>
       </select>
       <div style="margin-top:10px;"><button class="btn malayalam" onclick="downloadIdCards()">🪪 ഐഡി കാർഡുകൾ PDF ആയി ഡൗൺലോഡ് ചെയ്യുക</button></div>
-      <div class="note malayalam">📌 ഓരോ കാർഡും A6 (105 × 148 മി.മീ) — A4 ഷീറ്റിൽ 4 എണ്ണം, A3 ഷീറ്റിൽ 8 എണ്ണം. പേര്, രജി. നമ്പർ, കാറ്റഗറി, സ്കൂൾ, ഫോട്ടോ, ഇനങ്ങൾ, വേദി, സമയം എന്നിവ ഉൾപ്പെടും.</div>
+      <div class="note malayalam">📌 ഓരോ കാർഡും A6 (105 × 148 മി.മീ) — A4 ഷീറ്റിൽ 4 എണ്ണം, A3 ഷീറ്റിൽ 8 എണ്ണം. പേര്, രജി. നമ്പർ, കാറ്റഗറി, സ്കൂൾ, ഫോട്ടോ, ഇനങ്ങൾ, വേദി, സമയം എന്നിവയും മുഴുവൻ വിവരങ്ങളുള്ള QR കോഡും ഉൾപ്പെടും.</div>
     </div>
 
     <h3 class="section-head malayalam">സ്കൂൾ വൈസ് രജിസ്ട്രേഷൻ റിപ്പോർട്ട്</h3>
@@ -922,169 +1004,78 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
 /* ============================================================
    ITEM DATABASE — extracted from കലാമൃതം-2026
    ============================================================ */
-const CATS = {
-  I:  {name:"ശിശു (SISU)", cls:"I–IV"},
-  II: {name:"ബാല (BALA)", cls:"V–VII"},
-  III:{name:"കിഷോർ (KISHORE)", cls:"VIII–X"},
-  IV: {name:"തരുൺ (THARUN)", cls:"XI–XII"},
-  V:  {name:"പൊതു (Common)", cls:"III–XII"}
+let CATS = {
+  I:  {name:"പ്രാഥമിക (PRATHMIK)", cls:"I–II"},
+  II: {name:"ശിശു (SISU)", cls:"III–V"},
+  III:{name:"ബാല (BALA)", cls:"VI–VII"}
 };
+// CATS and ITEMS above are the built-in defaults. A district admin can add/remove
+// categories and items at runtime (see CATALOG MANAGEMENT below); those changes are
+// persisted to shared storage under the 'catalog' key and override these defaults
+// on load.
 
 function it(code,name,cat,stage,gender,time,n){return{code,name,cat,stage,gender,time,n};}
 
-const ITEMS = [
-// ---------------- CATEGORY I : SISU ----------------
-it(101,"ചിത്രരചന പെൻസിൽ","I","off","Common","120 മിനിറ്റ്",1),
-it(102,"ചിത്രരചന ക്രയോൺ","I","off","Common","120 മിനിറ്റ്",1),
-it(103,"ചിത്രരചന ജലച്ചായം","I","off","Common","120 മിനിറ്റ്",1),
-it(104,"പദ്യം ചൊല്ലൽ മലയാളം","I","on","Common","5 മിനിറ്റ്",1),
-it(105,"പദ്യം ചൊല്ലൽ ഇംഗ്ലീഷ്","I","on","Common","5 മിനിറ്റ്",1),
-it(106,"പ്രസംഗം മലയാളം","I","on","Common","5 മിനിറ്റ്",1),
-it(107,"പ്രസംഗം ഇംഗ്ലീഷ്","I","on","Common","5 മിനിറ്റ്",1),
-it(108,"ലളിതഗാനം","I","on","Common","5 മിനിറ്റ്",1),
-it(109,"ശാസ്ത്രീയ സംഗീതം","I","on","Common","10 മിനിറ്റ്",1),
-it(110,"കഥാകഥനം മലയാളം","I","on","Common","5 മിനിറ്റ്",1),
-it(111,"മോണോ ആക്ട്","I","on","Common","5 മിനിറ്റ്",1),
-it(112,"ദേശഭക്തിഗാനം മലയാളം","I","on","Common","5 മിനിറ്റ്",7),
-it(113,"നാടൻപാട്ട്","I","on","Common","10 മിനിറ്റ്",7),
-it(114,"നാടോടിനൃത്തം","I","on","Girl","5 മിനിറ്റ്",1),
-it(115,"ഭരതനാട്യം","I","on","Girl","10 മിനിറ്റ്",1),
-it(116,"സംഘനൃത്തം","I","on","Girl","10 മിനിറ്റ്",7),
-it(117,"പദ്യം ചൊല്ലൽ (SKT)","I","on","Common","5 മിനിറ്റ്",1),
-it(118,"പ്രസംഗം (SKT)","I","on","Common","5 മിനിറ്റ്",1),
-it(119,"സംഘഗാനം (SKT)","I","on","Common","5 മിനിറ്റ്",7),
-it(120,"ഗാനാലാപനം (SKT)","I","on","Common","5 മിനിറ്റ്",1),
-it(121,"ഭഗവത്ഗീത ചൊല്ലൽ","I","on","Common","5 മിനിറ്റ്",1),
-it(122,"രാമായണ പാരായണം","I","on","Common","5 മിനിറ്റ്",1),
+let ITEMS = [
+// ---------------- CATEGORY I : PRATHMIK (Class I-II) ----------------
+it(101,"CHITRARACHNA(CRAYON)","I","off","Common","",1),
+it(102,"PADYAMCHOLLAL MALAYALAM","I","on","Common","",1),
+it(103,"PADYAM CHOLLAL (ENGLISH)","I","on","Common","",1),
+it(104,"KATHAKATHANAM","I","on","Common","",1),
+it(105,"LALITHAGANAM","I","on","Common","",1),
+it(106,"DESABHAKTHIGANAM","I","on","Common","",7),
+it(107,"NADANPATTU","I","on","Common","",7),
+it(108,"NADODINRUTHAM","I","on","Common","",1),
 
-// ---------------- CATEGORY II : BALA ----------------
-it(201,"ചിത്രരചന പെൻസിൽ","II","off","Common","120 മിനിറ്റ്",1),
-it(202,"ചിത്രരചന ജലച്ചായം","II","off","Common","120 മിനിറ്റ്",1),
-it(203,"ചിത്രരചന കാർട്ടൂൺ","II","off","Common","120 മിനിറ്റ്",1),
-it(204,"പോസ്റ്റർ നിർമ്മാണം","II","off","Common","120 മിനിറ്റ്",1),
-it(205,"കഥാരചന മലയാളം","II","off","Common","90 മിനിറ്റ്",1),
-it(206,"കവിതാരചന മലയാളം","II","off","Common","90 മിനിറ്റ്",1),
-it(207,"ഉപന്യാസം മലയാളം","II","off","Common","90 മിനിറ്റ്",1),
-it(208,"ഉപന്യാസം ഇംഗ്ലീഷ്","II","off","Common","90 മിനിറ്റ്",1),
-it(209,"ഉപന്യാസം ഹിന്ദി","II","off","Common","90 മിനിറ്റ്",1),
-it(210,"ഉപന്യാസം SKT","II","off","Common","90 മിനിറ്റ്",1),
-it(211,"സമസ്യാപൂരണം SKT","II","off","Common","60 മിനിറ്റ്",1),
-it(212,"പദ്യം ചൊല്ലൽ മലയാളം","II","on","Common","5 മിനിറ്റ്",1),
-it(213,"പദ്യം ചൊല്ലൽ ഇംഗ്ലീഷ്","II","on","Common","5 മിനിറ്റ്",1),
-it(214,"പദ്യം ചൊല്ലൽ ഹിന്ദി","II","on","Common","5 മിനിറ്റ്",1),
-it(215,"പ്രസംഗം മലയാളം","II","on","Common","5 മിനിറ്റ്",1),
-it(216,"പ്രസംഗം ഇംഗ്ലീഷ്","II","on","Common","5 മിനിറ്റ്",1),
-it(217,"പ്രസംഗം ഹിന്ദി","II","on","Common","5 മിനിറ്റ്",1),
-it(218,"ലളിതഗാനം","II","on","Common","5 മിനിറ്റ്",1),
-it(219,"ശാസ്ത്രീയ സംഗീതം","II","on","Common","10 മിനിറ്റ്",1),
-it(220,"മോണോ ആക്ട്","II","on","Common","5 മിനിറ്റ്",1),
-it(221,"മിമിക്രി","II","on","Common","5 മിനിറ്റ്",1),
-it(222,"ദേശഭക്തിഗാനം മലയാളം","II","on","Common","5 മിനിറ്റ്",7),
-it(223,"നാടൻപാട്ട്","II","on","Common","10 മിനിറ്റ്",7),
-it(224,"നാടോടിനൃത്തം","II","on","Common","5 മിനിറ്റ്",1),
-it(225,"ഭരതനാട്യം","II","on","Common","10 മിനിറ്റ്",1),
-it(226,"മോഹിനിയാട്ടം","II","on","Girl","10 മിനിറ്റ്",1),
-it(227,"തിരുവാതിരക്കളി","II","on","Girl","10 മിനിറ്റ്",10),
-it(228,"സംഘനൃത്തം","II","on","Girl","10 മിനിറ്റ്",7),
-it(229,"പദ്യം ചൊല്ലൽ SKT","II","on","Common","5 മിനിറ്റ്",1),
-it(230,"പ്രസംഗം SKT","II","on","Common","5 മിനിറ്റ്",1),
-it(231,"ഗാനാലാപനം SKT","II","on","Common","5 മിനിറ്റ്",1),
-it(232,"സംഘഗാനം SKT","II","on","Common","5 മിനിറ്റ്",7),
-it(233,"നാടകം ഇംഗ്ലീഷ്","II","on","Common","30 മിനിറ്റ്","7+3"),
-it(234,"തബല","II","on","Common","10 മിനിറ്റ്",1),
-it(235,"മൃദംഗം","II","on","Common","10 മിനിറ്റ്",1),
-it(236,"ഓടക്കുഴൽ","II","on","Common","10 മിനിറ്റ്",1),
-it(237,"വയലിൻ (പാശ്ചാത്യം)","II","on","Common","10 മിനിറ്റ്",1),
-it(238,"വയലിൻ (പൗരസ്ത്യം)","II","on","Common","10 മിനിറ്റ്",1),
-it(239,"യോഗചാപ്","II","on","Common","10 മിനിറ്റ്",10),
-it(240,"അഷ്ടപദി","II","on","Common","10 മിനിറ്റ്",1),
-it(241,"രാമായണ പാരായണം","II","on","Common","5 മിനിറ്റ്",1),
-it(242,"ഭഗവദ്ഗീത ചൊല്ലൽ","II","on","Common","5 മിനിറ്റ്",1),
+// ---------------- CATEGORY II : SISU (Class III-V) ----------------
+it(201,"CHITRARACHANA PENCIL","II","off","Common","",1),
+it(202,"CHITRARACHANA JALACHAYAM","II","off","Common","",1),
+it(203,"PADYAM CHOLLAL MALAYALAM","II","on","Common","",1),
+it(204,"PADYAM CHOLLAL (ENGLISH)","II","on","Common","",1),
+it(205,"PRASAGAM (MALAYALAM)","II","on","Common","",1),
+it(206,"PRASAGAM (ENGLISH)","II","on","Common","",1),
+it(207,"LALITHAGANAM","II","on","Common","",1),
+it(208,"NADANPATTU","II","on","Common","",7),
+it(209,"DESABHAKTHIGANAM","II","on","Common","",7),
+it(210,"THIRUVATHIRA","II","on","Girl","",8),
+it(211,"NADODINRUTHAM","II","on","Common","",1),
+it(212,"BHARATHANATYAM","II","on","Girl","",1),
+it(213,"SANGANIRTHAM","II","on","Common","",7),
+it(214,"SHASTRIYA SANGEETHAM","II","on","Common","",1),
+it(215,"PADYAM CHOLLAL (SANSKRIT)","II","on","Common","",1),
+it(216,"PRASAGAM (SANSKRIT)","II","on","Common","",1),
+it(217,"SANGHAGANAM (SANSKRIT)","II","on","Common","",7),
+it(218,"GANALAPANAM (SANSKRIT)","II","on","Common","",1),
 
-// ---------------- CATEGORY III : KISHORE ----------------
-it(301,"ചിത്രരചന പെൻസിൽ","III","off","Common","120 മിനിറ്റ്",1),
-it(302,"ചിത്രരചന ജലച്ചായം","III","off","Common","120 മിനിറ്റ്",1),
-it(303,"ചിത്രരചന കാർട്ടൂൺ","III","off","Common","120 മിനിറ്റ്",1),
-it(304,"ചിത്രരചന എണ്ണച്ചായം","III","off","Common","120 മിനിറ്റ്",1),
-it(305,"പോസ്റ്റർ നിർമ്മാണം","III","off","Common","120 മിനിറ്റ്",1),
-it(306,"കഥാരചന മലയാളം","III","off","Common","90 മിനിറ്റ്",1),
-it(307,"കഥാരചന ഇംഗ്ലീഷ്","III","off","Common","90 മിനിറ്റ്",1),
-it(308,"കഥാരചന ഹിന്ദി","III","off","Common","90 മിനിറ്റ്",1),
-it(309,"കവിതാരചന മലയാളം","III","off","Common","90 മിനിറ്റ്",1),
-it(310,"കവിതാരചന ഇംഗ്ലീഷ്","III","off","Common","90 മിനിറ്റ്",1),
-it(311,"കവിതാരചന ഹിന്ദി","III","off","Common","90 മിനിറ്റ്",1),
-it(312,"ഉപന്യാസം മലയാളം","III","off","Common","90 മിനിറ്റ്",1),
-it(313,"ഉപന്യാസം ഇംഗ്ലീഷ്","III","off","Common","90 മിനിറ്റ്",1),
-it(314,"ഉപന്യാസം ഹിന്ദി","III","off","Common","90 മിനിറ്റ്",1),
-it(315,"ഉപന്യാസം SKT","III","off","Common","90 മിനിറ്റ്",1),
-it(316,"സമസ്യാപൂരണം SKT","III","off","Common","60 മിനിറ്റ്",1),
-it(317,"കഥാരചന SKT","III","off","Common","90 മിനിറ്റ്",1),
-it(318,"കവിതാരചന SKT","III","off","Common","90 മിനിറ്റ്",1),
-it(319,"പദ്യം ചൊല്ലൽ മലയാളം","III","on","Common","5 മിനിറ്റ്",1),
-it(320,"പദ്യം ചൊല്ലൽ ഇംഗ്ലീഷ്","III","on","Common","5 മിനിറ്റ്",1),
-it(321,"പദ്യം ചൊല്ലൽ ഹിന്ദി","III","on","Common","5 മിനിറ്റ്",1),
-it(322,"പ്രസംഗം മലയാളം","III","on","Common","5 മിനിറ്റ്",1),
-it(323,"പ്രസംഗം ഇംഗ്ലീഷ്","III","on","Common","5 മിനിറ്റ്",1),
-it(324,"പ്രസംഗം ഹിന്ദി","III","on","Common","5 മിനിറ്റ്",1),
-it(325,"ലളിതഗാനം","III","on","Boy","5 മിനിറ്റ്",1),
-it(326,"ലളിതഗാനം","III","on","Girl","5 മിനിറ്റ്",1),
-it(327,"ശാസ്ത്രീയ സംഗീതം","III","on","Boy & Girl","10 മിനിറ്റ്",1),
-it(328,"മോണോ ആക്ട്","III","on","Common","5 മിനിറ്റ്",1),
-it(329,"മിമിക്രി","III","on","Common","5 മിനിറ്റ്",1),
-it(330,"ദേശഭക്തിഗാനം മലയാളം","III","on","Common","5 മിനിറ്റ്",7),
-it(331,"നാടൻപാട്ട്","III","on","Common","10 മിനിറ്റ്",7),
-it(332,"നാടോടിനൃത്തം","III","on","Common","5 മിനിറ്റ്",1),
-it(333,"ഭരതനാട്യം","III","on","Common","10 മിനിറ്റ്",1),
-it(334,"മോഹിനിയാട്ടം","III","on","Girl","10 മിനിറ്റ്",1),
-it(335,"കുച്ചുപ്പുടി","III","on","Girl","10 മിനിറ്റ്",1),
-it(336,"തിരുവാതിരക്കളി","III","on","Girl","10 മിനിറ്റ്",10),
-it(337,"സംഘനൃത്തം","III","on","Girl","10 മിനിറ്റ്",7),
-it(338,"പദ്യം ചൊല്ലൽ SKT","III","on","Common","5 മിനിറ്റ്",1),
-it(339,"പ്രസംഗം SKT","III","on","Common","5 മിനിറ്റ്",1),
-it(340,"ഗാനാലാപനം SKT","III","on","Common","5 മിനിറ്റ്",1),
-it(341,"സംഘഗാനം SKT","III","on","Common","5 മിനിറ്റ്",7),
-it(342,"നാടകം മലയാളം","III","on","Common","30 മിനിറ്റ്","7+3"),
-it(343,"നാടകം ഇംഗ്ലീഷ്","III","on","Common","30 മിനിറ്റ്","7+3"),
-it(344,"തബല","III","on","Common","10 മിനിറ്റ്",1),
-it(345,"മൃദംഗം","III","on","Common","10 മിനിറ്റ്",1),
-it(346,"ഓടക്കുഴൽ","III","on","Common","10 മിനിറ്റ്",1),
-it(347,"വയലിൻ (പാശ്ചാത്യം)","III","on","Common","10 മിനിറ്റ്",1),
-it(348,"വയലിൻ (പൗരസ്ത്യം)","III","on","Common","10 മിനിറ്റ്",1),
-it(349,"കീബോർഡ്","III","on","Common","10 മിനിറ്റ്",1),
-it(350,"രാമായണ പാരായണം","III","on","Common","5 മിനിറ്റ്",1),
-it(351,"അഷ്ടപദി","III","on","Common","10 മിനിറ്റ്",1),
-it(352,"യോഗചാപ്","III","on","Common","10 മിനിറ്റ്",10),
-it(353,"അക്ഷരശ്ലോകം - സംസ്കൃതം","III","on","Common","5 മിനിറ്റ്",1),
-it(354,"ഭഗവദ്ഗീത വ്യാഖ്യാനം","III","on","Common","5 മിനിറ്റ്",1),
+// ---------------- CATEGORY III : BALA (Class VI-VII) ----------------
+it(301,"CHITRARACHANA PENCIL","III","off","Common","",1),
+it(302,"CHITRARACHANA JALACHAYAM","III","off","Common","",1),
+it(303,"KATHARACHANA","III","off","Common","",1),
+it(304,"KAVITHARACHANA","III","off","Common","",1),
+it(305,"UPANYASAM (MALAYALAM)","III","off","Common","",1),
+it(306,"UPANYASAM (ENGLISH)","III","off","Common","",1),
+it(307,"UPANYASAM (HINDI)","III","off","Common","",1),
+it(308,"UPANYASAM (SANSKRIT)","III","off","Common","",1),
+it(309,"SAMASYAPOORANAM","III","off","Common","",1),
+it(310,"PADYAM CHOLLAL MALAYALAM","III","on","Common","",1),
+it(311,"PADYAM CHOLLAL (ENGLISH)","III","on","Common","",1),
+it(312,"PADYAM CHOLLAL (HINDI)","III","on","Common","",1),
+it(313,"PRASAGAM (MALAYALAM)","III","on","Common","",1),
+it(314,"PRASAGAM (HINDI)","III","on","Common","",1),
+it(315,"PRASAGAM (ENGLISH)","III","on","Common","",1),
+it(316,"LALITHAGANAM","III","on","Common","",1),
+it(317,"NADANPATTU","III","on","Common","",7),
+it(318,"DESABHAKTHIGANAM","III","on","Common","",7),
+it(319,"SANGANIRTHAM","III","on","Common","",7),
+it(320,"BHARATHANATYAM","III","on","Girl","",1),
+it(321,"THIRUVATHIRA","III","on","Girl","","8+2"),
+it(322,"NADODINRUTHAM","III","on","Common","",1),
+it(323,"SHASTRIYA SANGEETHAM","III","on","Common","",1),
+it(324,"PADYAM CHOLLAL (SANSKRIT)","III","on","Common","",1),
+it(325,"PRASAGAM (SANSKRIT)","III","on","Common","",1),
+it(326,"SANGHAGANAM (SANSKRIT)","III","on","Common","",7),
+it(327,"GANALAPANAM (SANSKRIT)","III","on","Common","",1),
 
-// ---------------- CATEGORY IV : THARUN ----------------
-it(401,"ചിത്രരചന പെൻസിൽ","IV","off","Common","120 മിനിറ്റ്",1),
-it(402,"ചിത്രരചന ജലച്ചായം","IV","off","Common","120 മിനിറ്റ്",1),
-it(403,"ചിത്രരചന കാർട്ടൂൺ","IV","off","Common","120 മിനിറ്റ്",1),
-it(404,"ചിത്രരചന എണ്ണച്ചായം","IV","off","Common","120 മിനിറ്റ്",1),
-it(405,"പോസ്റ്റർ നിർമ്മാണം","IV","off","Common","120 മിനിറ്റ്",1),
-it(406,"കഥാരചന ഇംഗ്ലീഷ്","IV","off","Common","90 മിനിറ്റ്",1),
-it(407,"കവിതാരചന ഇംഗ്ലീഷ്","IV","off","Common","90 മിനിറ്റ്",1),
-it(408,"ഉപന്യാസം ഇംഗ്ലീഷ്","IV","off","Common","90 മിനിറ്റ്",1),
-it(409,"പദ്യം ചൊല്ലൽ ഇംഗ്ലീഷ്","IV","on","Common","5 മിനിറ്റ്",1),
-it(410,"പ്രസംഗം ഇംഗ്ലീഷ്","IV","on","Common","5 മിനിറ്റ്",1),
-it(411,"ലളിതഗാനം","IV","on","Boy","5 മിനിറ്റ്",1),
-it(412,"ലളിതഗാനം","IV","on","Girl","5 മിനിറ്റ്",1),
-it(413,"ശാസ്ത്രീയ സംഗീതം","IV","on","Boy","10 മിനിറ്റ്",1),
-it(414,"ശാസ്ത്രീയ സംഗീതം","IV","on","Girl","10 മിനിറ്റ്",1),
-it(415,"മോണോ ആക്ട്","IV","on","Common","5 മിനിറ്റ്",1),
-it(416,"മിമിക്രി","IV","on","Common","5 മിനിറ്റ്",1),
-it(417,"നാടോടിനൃത്തം","IV","on","Common","5 മിനിറ്റ്",1),
-it(418,"ഭരതനാട്യം","IV","on","Common","10 മിനിറ്റ്",1),
-it(419,"മോഹിനിയാട്ടം","IV","on","Girl","10 മിനിറ്റ്",1),
-it(420,"കുച്ചുപ്പുടി","IV","on","Girl","10 മിനിറ്റ്",1),
-it(421,"രാമായണ പാരായണം","IV","on","Common","5 മിനിറ്റ്",1),
-it(422,"ഭഗവദ്ഗീത വ്യാഖ്യാനം","IV","on","Common","5 മിനിറ്റ്",1),
-it(423,"അഷ്ടപദി","IV","on","Common","10 മിനിറ്റ്",1),
-it(424,"കീബോർഡ്","IV","on","Common","10 മിനിറ്റ്",1),
-
-// ---------------- CATEGORY V : Common ----------------
-it(501,"ഘോഷ്","V","off","Common","20-30 മിനിറ്റ്","20-30"),
 ];
 
 // Judging rubrics keyed loosely by item-name pattern (reference only, generic 100-mark totals)
@@ -1208,6 +1199,7 @@ function scheduleLiveRerender(){
   if(liveSyncTimer) clearTimeout(liveSyncTimer);
   liveSyncTimer = setTimeout(async ()=>{
     await loadAll();
+    resetCategorySelectCaches();
     renderLoginPublicBoard();
     if(CURRENT_USER){
       renderHome(); renderItems(); renderSchools(); renderEntries();
@@ -1217,27 +1209,65 @@ function scheduleLiveRerender(){
 }
 function startLiveSync(){
   if(!fbReady) return;
-  ['scores','entries','schools','students','schedule','config'].forEach(key=>{
+  ['scores','entries','schools','students','schedule','config','catalog'].forEach(key=>{
     fbDb.ref('kalotsavam/'+key).on('value', ()=>{ scheduleLiveRerender(); });
   });
 }
 
+// Guards against a slow/unreachable Firebase connection hanging the whole app
+// forever: any single get() that doesn't settle within LOAD_TIMEOUT_MS is
+// treated as a failure so the app falls back to defaults and still renders.
+const LOAD_TIMEOUT_MS = 6000;
+function withTimeout(promise, ms){
+  return Promise.race([
+    promise,
+    new Promise((_,rej)=>setTimeout(()=>rej(new Error('storage timeout')), ms))
+  ]);
+}
 async function loadAll(){
-  try{ const r = await window.storage.get('schools', true); SCHOOLS = r? JSON.parse(r.value):[]; }catch(e){ SCHOOLS=[]; }
-  try{ const r = await window.storage.get('students', true); STUDENTS = r? JSON.parse(r.value):[]; }catch(e){ STUDENTS=[]; }
-  try{ const r = await window.storage.get('entries', true); ENTRIES = r? JSON.parse(r.value):[]; }catch(e){ ENTRIES=[]; }
-  try{ const r = await window.storage.get('scores', true); SCORES = r? JSON.parse(r.value):{}; }catch(e){ SCORES={}; }
-  try{ const r = await window.storage.get('schedule', true); SCHEDULE = r? JSON.parse(r.value):{}; }catch(e){ SCHEDULE={}; }
+  // Run every fetch in parallel (instead of one-after-another) so a single slow
+  // key can't delay — or with the timeout above, block — everything else.
+  const [schoolsR, studentsR, entriesR, scoresR, scheduleR, configR, authR, catalogR] = await Promise.allSettled([
+    withTimeout(window.storage.get('schools', true), LOAD_TIMEOUT_MS),
+    withTimeout(window.storage.get('students', true), LOAD_TIMEOUT_MS),
+    withTimeout(window.storage.get('entries', true), LOAD_TIMEOUT_MS),
+    withTimeout(window.storage.get('scores', true), LOAD_TIMEOUT_MS),
+    withTimeout(window.storage.get('schedule', true), LOAD_TIMEOUT_MS),
+    withTimeout(window.storage.get('config', true), LOAD_TIMEOUT_MS),
+    withTimeout(window.storage.get('auth', true), LOAD_TIMEOUT_MS),
+    withTimeout(window.storage.get('catalog', true), LOAD_TIMEOUT_MS),
+  ]);
+
+  try{ SCHOOLS = (schoolsR.status==='fulfilled' && schoolsR.value) ? JSON.parse(schoolsR.value.value) : []; }catch(e){ SCHOOLS=[]; }
+  try{ STUDENTS = (studentsR.status==='fulfilled' && studentsR.value) ? JSON.parse(studentsR.value.value) : []; }catch(e){ STUDENTS=[]; }
+  try{ ENTRIES = (entriesR.status==='fulfilled' && entriesR.value) ? JSON.parse(entriesR.value.value) : []; }catch(e){ ENTRIES=[]; }
+  try{ SCORES = (scoresR.status==='fulfilled' && scoresR.value) ? JSON.parse(scoresR.value.value) : {}; }catch(e){ SCORES={}; }
+  try{ SCHEDULE = (scheduleR.status==='fulfilled' && scheduleR.value) ? JSON.parse(scheduleR.value.value) : {}; }catch(e){ SCHEDULE={}; }
+
   try{
-    const r = await window.storage.get('config', true);
-    if(r){ const parsed = JSON.parse(r.value); CONFIG = Object.assign({judgeCount:3, regCounter:0, registrationClosed:false, schoolCounters:{}}, parsed); }
-    else { await saveConfig(); }
+    if(configR.status==='fulfilled' && configR.value){
+      const parsed = JSON.parse(configR.value.value);
+      CONFIG = Object.assign({judgeCount:3, regCounter:0, registrationClosed:false, schoolCounters:{}}, parsed);
+    } else if(configR.status==='fulfilled'){ saveConfig(); } // no key yet — persist defaults (fire-and-forget)
   }catch(e){ /* keep defaults */ }
+
   try{
-    const r = await window.storage.get('auth', true);
-    if(r){ const parsed = JSON.parse(r.value); AUTH = Object.assign({districtPassword:'district2026', schoolAccounts:{}, officials:[]}, parsed); }
-    else { await saveAuth(); }
+    if(authR.status==='fulfilled' && authR.value){
+      const parsed = JSON.parse(authR.value.value);
+      AUTH = Object.assign({districtPassword:'district2026', schoolAccounts:{}, officials:[]}, parsed);
+    } else if(authR.status==='fulfilled'){ saveAuth(); }
   }catch(e){ /* keep defaults */ }
+
+  try{
+    if(catalogR.status==='fulfilled' && catalogR.value){
+      const parsed = JSON.parse(catalogR.value.value);
+      if(parsed && parsed.cats && parsed.items){ CATS = parsed.cats; ITEMS = parsed.items; }
+    } else if(catalogR.status==='fulfilled'){ saveCatalog(); } // first run — persist built-in defaults
+  }catch(e){ /* keep built-in defaults (Prathmik/SISU/BALA) */ }
+
+  if([schoolsR,studentsR,entriesR,scoresR,scheduleR,configR,authR,catalogR].some(r=>r.status==='rejected')){
+    console.warn('Some data failed to load from Firebase (timeout or offline) — showing local/default data.');
+  }
 }
 async function saveSchools(){ try{ await window.storage.set('schools', JSON.stringify(SCHOOLS), true);}catch(e){toast('സേവ് പിഴവ്');} }
 async function saveStudents(){ try{ await window.storage.set('students', JSON.stringify(STUDENTS), true);}catch(e){toast('സേവ് പിഴവ്');} }
@@ -1246,6 +1276,7 @@ async function saveScoresRemote(){ try{ await window.storage.set('scores', JSON.
 async function saveSchedule(){ try{ await window.storage.set('schedule', JSON.stringify(SCHEDULE), true);}catch(e){toast('സേവ് പിഴവ്');} }
 async function saveAuth(){ try{ await window.storage.set('auth', JSON.stringify(AUTH), true);}catch(e){toast('സേവ് പിഴവ്');} }
 async function saveConfig(){ try{ await window.storage.set('config', JSON.stringify(CONFIG), true);}catch(e){toast('സേവ് പിഴവ്');} }
+async function saveCatalog(){ try{ await window.storage.set('catalog', JSON.stringify({cats:CATS, items:ITEMS}), true);}catch(e){toast('സേവ് പിഴവ്');} }
 
 /* ============================================================
    AUTH / LOGIN
@@ -1490,6 +1521,12 @@ function renderHome(){
     <div class="stat"><b>${totalEntries}</b><span>ആകെ എൻട്രികൾ</span></div>
     <div class="stat"><b>${scored}</b><span>മാർക്ക് നൽകിയവ</span></div>
   `;
+  const catsTbody = document.getElementById('homeCatsTbody');
+  if(catsTbody){
+    catsTbody.innerHTML = Object.keys(CATS).map(c=>
+      `<tr><td><span class="badge ${c}">${c}</span></td><td class="malayalam">${CATS[c].name}</td><td>${CATS[c].cls||''}</td></tr>`
+    ).join('') || `<tr><td colspan="3" class="empty">കാറ്റഗറികളില്ല</td></tr>`;
+  }
 }
 
 /* ============================================================
@@ -1521,9 +1558,146 @@ function renderItems(){
       <td>${i.time}</td>
       <td>${i.n}</td>
     </tr>`).join('') || `<tr><td colspan="7" class="empty">ഇനങ്ങൾ ലഭ്യമല്ല</td></tr>`;
+
+  const isDistrict = CURRENT_USER && CURRENT_USER.role==='district';
+  const catAdminCard = document.getElementById('catAdminCard');
+  const itemAdminCard = document.getElementById('itemAdminCard');
+  if(catAdminCard) catAdminCard.style.display = isDistrict ? '' : 'none';
+  if(itemAdminCard) itemAdminCard.style.display = isDistrict ? '' : 'none';
+  if(isDistrict){ renderCatAdminTable(); renderItemAdminTable(); }
 }
 ['itemCatFilter','itemStageFilter'].forEach(id=>document.getElementById(id).addEventListener('change', renderItems));
 document.getElementById('itemSearch').addEventListener('input', renderItems);
+
+/* ============================================================
+   CATEGORY / ITEM CATALOG MANAGEMENT — district admin only
+   ============================================================ */
+function resetCategorySelectCaches(){
+  ['itemCatFilter','entryCat','editItemCat','venItemCatFilter','entryFilterCat','pdfFilterCat'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) delete el.dataset.init;
+  });
+}
+function refreshAfterCatalogChange(){
+  resetCategorySelectCaches();
+  renderHome();
+  renderItems();
+  renderCategoryScoreboards();
+  const entriesPanel = document.getElementById('panel-entries');
+  if(entriesPanel && entriesPanel.classList.contains('active')) renderEntries();
+  populatePublicEventSearch();
+}
+function renderCatAdminTable(){
+  const tbody = document.getElementById('catAdminTbody');
+  if(!tbody) return;
+  tbody.innerHTML = Object.keys(CATS).map(c=>`
+    <tr>
+      <td>${c}</td>
+      <td class="malayalam">${CATS[c].name}</td>
+      <td>${CATS[c].cls||''}</td>
+      <td><button class="btn danger small" onclick="deleteCategory('${c}')">നീക്കുക</button></td>
+    </tr>`).join('') || `<tr><td colspan="4" class="empty">കാറ്റഗറികളില്ല</td></tr>`;
+}
+async function addCategory(){
+  const codeInput = document.getElementById('newCatCode');
+  const nameInput = document.getElementById('newCatName');
+  const clsInput = document.getElementById('newCatCls');
+  const code = codeInput.value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const name = nameInput.value.trim();
+  const cls = clsInput.value.trim();
+  if(!code || !name){ toast('കോഡും പേരും നിർബന്ധമാണ് (കോഡിൽ അക്ഷരങ്ങൾ/അക്കങ്ങൾ മാത്രം)'); return; }
+  if(CATS[code]){ toast('ഈ കോഡ് നിലവിലുണ്ട്'); return; }
+  CATS[code] = {name, cls};
+  codeInput.value=''; nameInput.value=''; clsInput.value='';
+  await saveCatalog();
+  refreshAfterCatalogChange();
+  toast('കാറ്റഗറി ചേർത്തു ✓');
+}
+async function deleteCategory(code){
+  const hasItems = ITEMS.some(i=>i.cat===code);
+  const hasEntries = ENTRIES.some(e=>{ const item=ITEMS.find(i=>String(i.code)===String(e.itemCode)); return item && item.cat===code; });
+  const msg = (hasItems || hasEntries)
+    ? 'ഈ കാറ്റഗറിയിൽ ഇനങ്ങളും/എൻട്രികളും ഉണ്ട്. അവ എല്ലാം സഹിതം ഈ കാറ്റഗറി ഡിലീറ്റ് ചെയ്യണോ?'
+    : 'ഈ കാറ്റഗറി ഡിലീറ്റ് ചെയ്യണോ?';
+  if(!confirm(msg)) return;
+  delete CATS[code];
+  ITEMS = ITEMS.filter(i=>i.cat!==code);
+  await saveCatalog();
+  refreshAfterCatalogChange();
+  toast('കാറ്റഗറി നീക്കി ✓');
+}
+function populateNewItemCatSelect(){
+  const sel = document.getElementById('newItemCat');
+  if(!sel) return;
+  const prev = sel.value;
+  const cats = Object.keys(CATS);
+  sel.innerHTML = cats.map(c=>`<option value="${c}">${CATS[c].name} (${c})</option>`).join('');
+  if(cats.includes(prev)) sel.value = prev;
+}
+function populateItemAdminCatFilter(){
+  const sel = document.getElementById('itemAdminCatFilter');
+  if(!sel) return;
+  const prev = sel.value;
+  const cats = Object.keys(CATS);
+  sel.innerHTML = '<option value="">എല്ലാ കാറ്റഗറിയും</option>' + cats.map(c=>`<option value="${c}">${CATS[c].name} (${c})</option>`).join('');
+  if(cats.includes(prev)) sel.value = prev;
+}
+async function addItemToCategory(){
+  const cat = document.getElementById('newItemCat').value;
+  const codeInput = document.getElementById('newItemCode');
+  const nameInput = document.getElementById('newItemName');
+  const timeInput = document.getElementById('newItemTime');
+  const nInput = document.getElementById('newItemN');
+  const stage = document.getElementById('newItemStage').value;
+  const gender = document.getElementById('newItemGender').value;
+  const codeRaw = codeInput.value.trim();
+  const name = nameInput.value.trim();
+  const time = timeInput.value.trim();
+  const nRaw = nInput.value.trim() || '1';
+  if(!cat){ toast('കാറ്റഗറി തിരഞ്ഞെടുക്കുക'); return; }
+  if(!codeRaw || !name){ toast('കോഡും ഇനത്തിന്റെ പേരും നിർബന്ധമാണ്'); return; }
+  const code = isNaN(Number(codeRaw)) ? codeRaw : Number(codeRaw);
+  if(ITEMS.some(i=>String(i.code)===String(code))){ toast('ഈ കോഡ് നിലവിലുണ്ട്'); return; }
+  const n = isNaN(Number(nRaw)) ? nRaw : Number(nRaw);
+  ITEMS.push(it(code, name, cat, stage, gender, time||'-', n));
+  codeInput.value=''; nameInput.value=''; timeInput.value=''; nInput.value='1';
+  await saveCatalog();
+  refreshAfterCatalogChange();
+  toast('ഇനം ചേർത്തു ✓');
+}
+async function removeItemFromCategory(code){
+  const hasEntries = ENTRIES.some(e=>String(e.itemCode)===String(code));
+  const msg = hasEntries
+    ? 'ഈ ഇനത്തിൽ എൻട്രികൾ രജിസ്റ്റർ ചെയ്തിട്ടുണ്ട്. എന്നാലും ഈ ഇനം നീക്കം ചെയ്യണോ?'
+    : 'ഈ ഇനം നീക്കം ചെയ്യണോ?';
+  if(!confirm(msg)) return;
+  ITEMS = ITEMS.filter(i=>String(i.code)!==String(code));
+  await saveCatalog();
+  refreshAfterCatalogChange();
+  toast('ഇനം നീക്കി ✓');
+}
+function renderItemAdminTable(){
+  const tbody = document.getElementById('itemAdminTbody');
+  if(!tbody) return;
+  populateNewItemCatSelect();
+  populateItemAdminCatFilter();
+  const cat = document.getElementById('itemAdminCatFilter')?.value || '';
+  const q = (document.getElementById('itemAdminSearch')?.value||'').trim().toLowerCase();
+  let list = ITEMS.filter(i=>{
+    if(cat && i.cat!==cat) return false;
+    if(q && !(String(i.code).includes(q) || i.name.toLowerCase().includes(q))) return false;
+    return true;
+  });
+  tbody.innerHTML = list.map(i=>`
+    <tr>
+      <td>${i.code}</td>
+      <td class="malayalam">${i.name}</td>
+      <td><span class="badge ${i.cat}">${i.cat}</span></td>
+      <td><button class="btn danger small" onclick="removeItemFromCategory('${i.code}')">നീക്കുക</button></td>
+    </tr>`).join('') || `<tr><td colspan="4" class="empty">ഇനങ്ങളില്ല</td></tr>`;
+}
+document.getElementById('itemAdminCatFilter')?.addEventListener('change', renderItemAdminTable);
+document.getElementById('itemAdminSearch')?.addEventListener('input', renderItemAdminTable);
 
 /* ============================================================
    SCHOOLS TAB
@@ -2434,6 +2608,32 @@ function idCardCategory(cls){
   return '-';
 }
 
+function idCardQR(student){
+  try{
+    if(typeof qrcode!=='function') return '';
+    const entries = ENTRIES.filter(e=>e.studentId===student.id);
+    const lines = [
+      'KALAMRUTHAM 2026-27',
+      'Name: ' + (student.name||'-'),
+      'Reg No: ' + (student.regNo||'-'),
+      'Category: ' + idCardCategory(student.class),
+      'Class: ' + (student.class||'-'),
+      'School: ' + (student.schoolName||'-')
+    ];
+    if(student.gender) lines.push('Gender: ' + student.gender);
+    entries.forEach((e,i)=>{
+      const sch = SCHEDULE[e.itemCode] || {};
+      lines.push((i+1)+'. '+e.itemName+' | '+(sch.venue||'-')+' | '+(sch.time||'-'));
+    });
+    const txt = lines.join('\n');
+    const qr = qrcode(0,'M');
+    if(qrcode.stringToBytesFuncs && qrcode.stringToBytesFuncs['UTF-8']) qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
+    qr.addData(txt);
+    qr.make();
+    return qr.createDataURL(6,0);
+  }catch(err){ return ''; }
+}
+
 function buildIdCardHTML(student){
   const entries = ENTRIES.filter(e=>e.studentId===student.id).slice(0,5);
   const cell = 'padding:1.1mm 1.5mm;border-bottom:.3mm solid #e6dcf2;font-size:2.7mm;';
@@ -2446,6 +2646,7 @@ function buildIdCardHTML(student){
       <td style="font-size:3mm;color:#3b3350;padding:.5mm 1mm;">:</td>
       <td style="font-size:${bold?'3.4mm':'3.1mm'};color:#1d1430;font-weight:${bold?'800':'600'};padding:.5mm 0;">${value||'-'}</td>
     </tr>`;
+  const qrSrc = idCardQR(student);
   return `
   <div class="idcard" style="width:105mm;height:148mm;background:#5b1a9e;padding:2.4mm;box-sizing:border-box;font-family:'Noto Sans Malayalam',Inter,sans-serif;overflow:hidden;">
     <div style="width:100%;height:100%;background:#fff;border-radius:2mm;overflow:hidden;display:flex;flex-direction:column;">
@@ -2474,8 +2675,12 @@ function buildIdCardHTML(student){
           <tbody>${rows}</tbody>
         </table>
       </div>
-      <div style="margin-top:auto;display:flex;align-items:flex-end;justify-content:space-between;padding:0 3mm 3mm;">
-        <div style="flex:1;text-align:center;color:#6b2fa8;font-weight:700;font-size:3.2mm;line-height:1.5;">
+      <div style="margin-top:auto;display:flex;align-items:flex-end;justify-content:space-between;gap:2mm;padding:0 3mm 3mm;">
+        <div style="width:19mm;flex:0 0 auto;text-align:center;">
+          ${qrSrc ? `<img src="${qrSrc}" style="width:19mm;height:19mm;display:block;border:.3mm solid #e0d5f0;border-radius:1mm;background:#fff;">` : ''}
+          <div style="font-size:2.2mm;color:#6b2fa8;margin-top:.6mm;">SCAN</div>
+        </div>
+        <div style="flex:1;text-align:center;color:#6b2fa8;font-weight:700;font-size:3mm;line-height:1.45;">
           തളിർക്കുന്ന ബാല്യം,<br>തിളങ്ങുന്ന ഭാരതീയത
         </div>
         <img src="${IDCARD_DANCER}" style="width:17mm;height:20mm;object-fit:contain;flex:0 0 auto;">
@@ -2929,9 +3134,17 @@ document.getElementById('publicEventItem')?.addEventListener('change',renderPubl
   if(FIREBASE_CONFIG.apiKey.startsWith('PASTE_')){
     toast('⚠️ Firebase കോൺഫിഗ് ചെയ്തിട്ടില്ല — HTML ഫയലിന്റെ മുകളിൽ FIREBASE_CONFIG പൂരിപ്പിക്കുക');
   }
-  await loadAll();
-  renderLoginPublicBoard();
-  startLiveSync();
+  try{
+    await loadAll();
+  }catch(e){
+    console.error('loadAll failed unexpectedly — continuing with built-in defaults', e);
+  }
+  try{
+    renderLoginPublicBoard();
+  }catch(e){ console.error('renderLoginPublicBoard failed', e); }
+  try{
+    startLiveSync();
+  }catch(e){ console.error('startLiveSync failed', e); }
   // Rendering of tab content happens after successful login (see doLogin()).
 })();
 </script>
