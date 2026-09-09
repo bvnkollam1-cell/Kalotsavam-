@@ -1008,6 +1008,7 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
     <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn" onclick="saveStudentEditModal()">സേവ് ചെയ്യുക</button>
       <button class="btn ghost" onclick="closeEditStudentModal()">റദ്ദാക്കുക</button>
+      <button class="btn danger malayalam" style="margin-left:auto;" onclick="deleteStudentCompletely()">🗑️ കുട്ടിയെ പൂർണമായും ഒഴിവാക്കുക</button>
     </div>
   </div>
 </div>
@@ -1142,6 +1143,15 @@ function currentStudentStageCounts(studentId, cat){
     if(isGroupItem(it)) counts.group++; else counts.single++;
   });
   return counts;
+}
+// Single (non-group) events are one-student-per-school: once any student from a
+// school has been added to a single item, that item is no longer offered to other
+// students of the same school. Group/team items are exempt (a team has several
+// members from the same school by design). excludeStudentId lets the item stay
+// visible for the very student who already holds it (e.g. inside their own edit form).
+function singleItemTakenBySchool(item, schoolId, excludeStudentId){
+  if(!item || isGroupItem(item)) return false;
+  return ENTRIES.some(e=>e.itemCode===item.code && e.schoolId===schoolId && e.studentId!==excludeStudentId);
 }
 
 // Judging rubrics keyed loosely by item-name pattern (reference only, generic 100-mark totals)
@@ -1872,9 +1882,13 @@ function renderEntryItemChecklist(){
   populateEntryCatSelect();
   const cat = document.getElementById('entryCat').value;
   const q = (document.getElementById('entryItemSearch').value||'').trim().toLowerCase();
+  const schoolId = CURRENT_USER && CURRENT_USER.role==='school' ? CURRENT_USER.schoolId : document.getElementById('entrySchool').value;
+  const studentSel = document.getElementById('entryStudentSelect') ? document.getElementById('entryStudentSelect').value : '';
+  const excludeStudentId = (studentSel && studentSel!=='new') ? studentSel : null;
   let list = ITEMS.slice();
   if(cat) list = list.filter(i=>i.cat===cat);
   if(q) list = list.filter(i=> i.name.toLowerCase().includes(q) || String(i.code).includes(q));
+  list = list.filter(i=> !singleItemTakenBySchool(i, schoolId, excludeStudentId));
   const box = document.getElementById('entryItemChecklist');
   const checkedNow = new Set(Array.from(box.querySelectorAll('input.entchk:checked')).map(c=>c.value));
   box.innerHTML = list.map(i=>`
@@ -2028,6 +2042,8 @@ async function addEntry(){
     if(!item) return;
     const already = ENTRIES.some(e=>e.itemCode===itemCode && e.studentId===student.id);
     if(already) return;
+    // Safety-net: single (non-group) items are one-student-per-school.
+    if(singleItemTakenBySchool(item, schoolId, student.id)){ skipped.push(item); return; }
     // Safety-net re-check of the on-stage single/group caps (the checklist already
     // disables boxes past the limit, but ENTRIES may have changed since it rendered).
     if(item.stage!=='off'){
@@ -2091,9 +2107,12 @@ function renderEditItemChecklist(){
   populateEditCatSelect();
   const cat = document.getElementById('editItemCat').value;
   const q = (document.getElementById('editItemSearch').value||'').trim().toLowerCase();
+  const editStudent = STUDENTS.find(s=>s.id===EDIT_STUDENT_ID);
+  const schoolId = editStudent ? editStudent.schoolId : null;
   let list = ITEMS.slice();
   if(cat) list = list.filter(i=>i.cat===cat);
   if(q) list = list.filter(i=> i.name.toLowerCase().includes(q) || String(i.code).includes(q));
+  list = list.filter(i=> !singleItemTakenBySchool(i, schoolId, EDIT_STUDENT_ID));
   const box = document.getElementById('editItemChecklist');
   const checkedNow = new Set(Array.from(box.querySelectorAll('input.editchk:checked')).map(c=>c.value));
   const baseSet = box.dataset.loaded ? checkedNow : new Set(ENTRIES.filter(e=>e.studentId===EDIT_STUDENT_ID).map(e=>String(e.itemCode)));
@@ -2131,6 +2150,30 @@ function closeEditStudentModal(){
   document.getElementById('editStudentModal').style.display = 'none';
   EDIT_STUDENT_ID = null;
 }
+async function deleteStudentCompletely(){
+  if(!EDIT_STUDENT_ID) return;
+  if(isRegistrationLockedForCurrentUser()){
+    toast('രജിസ്ട്രേഷൻ ക്ലോസ് ചെയ്തിരിക്കുന്നു — ഇനി മാറ്റങ്ങൾ വരുത്താനാവില്ല');
+    return;
+  }
+  const student = STUDENTS.find(s=>s.id===EDIT_STUDENT_ID);
+  if(!student){ toast('കുട്ടിയെ കണ്ടെത്താനായില്ല'); return; }
+  if(CURRENT_USER && CURRENT_USER.role==='school' && student.schoolId!==CURRENT_USER.schoolId){
+    toast('ഈ കുട്ടിയെ നീക്കം ചെയ്യാൻ അനുവാദമില്ല'); return;
+  }
+  if(!confirm(`"${student.name}" (${student.regNo}) എന്ന കുട്ടിയെയും അവരുടെ എല്ലാ ഇനങ്ങളും/മാർക്കുകളും പൂർണമായും ഒഴിവാക്കും. ഈ പ്രവർത്തി തിരിച്ചെടുക്കാൻ കഴിയില്ല. തുടരണോ?`)) return;
+  const sid = EDIT_STUDENT_ID;
+  const removedEntryIds = ENTRIES.filter(e=>e.studentId===sid).map(e=>e.id);
+  STUDENTS = STUDENTS.filter(s=>s.id!==sid);
+  ENTRIES = ENTRIES.filter(e=>e.studentId!==sid);
+  removedEntryIds.forEach(id=>{ delete SCORES[id]; });
+  await saveStudents();
+  await saveEntries();
+  await saveScoresRemote();
+  closeEditStudentModal();
+  renderEntries();
+  toast('കുട്ടിയെ പൂർണമായും ഒഴിവാക്കി ✓');
+}
 async function saveStudentEditModal(){
   if(!EDIT_STUDENT_ID) return;
   if(isRegistrationLockedForCurrentUser()){
@@ -2152,11 +2195,14 @@ async function saveStudentEditModal(){
   // Remove entries for items that were unticked.
   ENTRIES = ENTRIES.filter(e=> e.studentId!==EDIT_STUDENT_ID || checked.has(e.itemCode));
   // Add entries for newly ticked items.
+  let editSkipped = [];
   checked.forEach(itemCode=>{
     const already = ENTRIES.some(e=>e.studentId===EDIT_STUDENT_ID && e.itemCode===itemCode);
     if(already) return;
     const item = ITEMS.find(i=>i.code===itemCode);
     if(!item) return;
+    // Safety-net: single (non-group) items are one-student-per-school.
+    if(singleItemTakenBySchool(item, student.schoolId, EDIT_STUDENT_ID)){ editSkipped.push(item); return; }
     ENTRIES.push({id:uid(), itemCode, itemName:item.name, cat:item.cat, schoolId:student.schoolId, schoolName:student.schoolName,
       studentId:student.id, regNo:student.regNo, name:student.name, class:student.class||'', chest:''});
   });
@@ -2167,7 +2213,7 @@ async function saveStudentEditModal(){
   await saveEntries();
   closeEditStudentModal();
   renderEntries();
-  toast('കുട്ടിയുടെ വിവരങ്ങൾ അപ്ഡേറ്റ് ചെയ്തു ✓');
+  toast('കുട്ടിയുടെ വിവരങ്ങൾ അപ്ഡേറ്റ് ചെയ്തു ✓' + (editSkipped.length ? ` (സ്കൂളിൽ നിന്ന് നേരത്തെ മറ്റൊരാൾക്ക് ചേർത്തതിനാൽ ${editSkipped.length} ഇനം ചേർത്തില്ല)` : ''));
 }
 
 function populateEntryFilters(){
