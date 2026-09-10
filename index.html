@@ -975,6 +975,35 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
         <button class="btn small secondary malayalam" onclick="downloadCatScoreboardExcel()">⬇️ Excel</button>
       </div>
     </div>
+
+    <h3 class="section-head malayalam">പങ്കെടുക്കുന്നവരുടെ ലിസ്റ്റ് (Participants List)</h3>
+    <div class="card">
+      <div id="reportParticipantsBox"></div>
+      <div class="row-actions" style="margin-top:10px;">
+        <button class="btn small ghost malayalam" onclick="downloadParticipantsListPDF()">🖨️ പ്രിന്റ് / PDF</button>
+        <button class="btn small secondary malayalam" onclick="downloadParticipantsListExcel()">⬇️ Excel</button>
+      </div>
+    </div>
+
+    <h3 class="section-head malayalam">ജേതാക്കളുടെ ലിസ്റ്റ് (Winners List)</h3>
+    <div class="card">
+      <div id="reportWinnersBox"></div>
+      <div class="row-actions" style="margin-top:10px;">
+        <button class="btn small ghost malayalam" onclick="downloadWinnersListPDF()">🖨️ പ്രിന്റ് / PDF</button>
+        <button class="btn small secondary malayalam" onclick="downloadWinnersListExcel()">⬇️ Excel</button>
+      </div>
+      <div class="note malayalam" style="margin-top:8px;">📌 ഓരോ ഇനത്തിലും ഒന്നും രണ്ടും മൂന്നും സ്ഥാനക്കാർ (ഗ്രേഡ് ലഭിച്ചവർ മാത്രം), ഗ്രേഡും പോയിന്റും സഹിതം.</div>
+    </div>
+
+    <h3 class="section-head malayalam">സമ്മാന വിതരണ ലിസ്റ്റ് (Prize Distribution List)</h3>
+    <div class="card">
+      <div id="reportPrizeDistBox"></div>
+      <div class="row-actions" style="margin-top:10px;">
+        <button class="btn small ghost malayalam" onclick="downloadPrizeDistributionPDF()">🖨️ പ്രിന്റ് / PDF</button>
+        <button class="btn small secondary malayalam" onclick="downloadPrizeDistributionExcel()">⬇️ Excel</button>
+      </div>
+      <div class="note malayalam" style="margin-top:8px;">📌 സ്കൂൾ തിരിച്ച് ഗ്രേഡ് A/B/C ലഭിച്ച എല്ലാ ഇനങ്ങളും — സമ്മാന വിതരണച്ചടങ്ങിൽ സ്കൂൾ വൈസ് വിളിക്കാൻ സൗകര്യപ്രദം.</div>
+    </div>
   </section>
 
 </main>
@@ -2871,6 +2900,89 @@ function downloadCatScoreboardExcel(){
   try{ XLSX.writeFile(wb, 'category-scoreboard.xlsx'); }catch(e){ toast('Excel നിർമ്മാണം പരാജയപ്പെട്ടു'); }
 }
 
+/* ---- Participants list (every entry, one row per item participation) ---- */
+function participantsListData(){
+  return ENTRIES.slice()
+    .sort((a,b)=> a.itemCode-b.itemCode || (a.schoolName||'').localeCompare(b.schoolName||''))
+    .map(e=>{
+      const item = ITEMS.find(i=>i.code===e.itemCode);
+      return {code:e.itemCode, name:item?item.name:e.itemName, cat:e.cat, chest:e.chest||'',
+        regNo:e.regNo||'-', student:e.name||'-', cls:e.class||'-', school:e.schoolName||'-'};
+    });
+}
+function renderParticipantsListReport(){
+  const data = participantsListData();
+  document.getElementById('reportParticipantsBox').innerHTML = `<div class="table-wrap"><table id="participantsListTable">
+    <thead><tr><th>കോഡ്</th><th class="malayalam">ഇനം</th><th>കാറ്റ.</th><th class="malayalam">ചെസ്റ്റ്#</th><th class="malayalam">രജി.നമ്പർ</th><th class="malayalam">പേര്</th><th class="malayalam">ക്ലാസ്സ്</th><th class="malayalam">സ്കൂൾ</th></tr></thead>
+    <tbody>${data.map(d=>`<tr><td>${d.code}</td><td class="malayalam">${d.name}</td><td><span class="badge ${d.cat}">${d.cat}</span></td><td>${d.chest||'-'}</td><td>${d.regNo}</td><td class="malayalam">${d.student}</td><td>${d.cls}</td><td class="malayalam">${d.school}</td></tr>`).join('') || `<tr><td colspan="8" class="empty">ഡാറ്റ ലഭ്യമല്ല</td></tr>`}</tbody>
+  </table></div>`;
+}
+function downloadParticipantsListPDF(){ downloadElementAsPDF(document.getElementById('participantsListTable'), 'participants-list.pdf'); }
+function downloadParticipantsListExcel(){
+  const data = participantsListData();
+  const aoa = [['കോഡ്','ഇനം','കാറ്റഗറി','ചെസ്റ്റ്#','രജി.നമ്പർ','പേര്','ക്ലാസ്സ്','സ്കൂൾ'],
+    ...data.map(d=>[d.code,d.name,d.cat,d.chest||'-',d.regNo,d.student,d.cls,d.school])];
+  downloadAOAExcel(aoa, 'participants-list.xlsx', 'Participants');
+}
+
+/* ---- Winners list (top-3 graded finishers per item) ---- */
+function winnersListData(){
+  const rows = [];
+  ITEMS.filter(i=>ENTRIES.some(e=>e.itemCode===i.code)).forEach(item=>{
+    computeResult(item.code).filter(r=>r.grade).slice(0,3).forEach((r,idx)=>{
+      rows.push({code:item.code, name:item.name, cat:item.cat, place:idx+1,
+        school:r.schoolName||'-', student: r.isGroup? '' : (r.name||'-'),
+        grade:r.grade, points:r.points});
+    });
+  });
+  return rows;
+}
+function renderWinnersListReport(){
+  const data = winnersListData();
+  document.getElementById('reportWinnersBox').innerHTML = `<div class="table-wrap"><table id="winnersListTable">
+    <thead><tr><th>കോഡ്</th><th class="malayalam">ഇനം</th><th>കാറ്റ.</th><th class="malayalam">സ്ഥാനം</th><th class="malayalam">സ്കൂൾ</th><th class="malayalam">പേര്</th><th class="malayalam">ഗ്രേഡ്</th><th class="malayalam">പോയിന്റ്</th></tr></thead>
+    <tbody>${data.map(d=>`<tr><td>${d.code}</td><td class="malayalam">${d.name}</td><td><span class="badge ${d.cat}">${d.cat}</span></td><td>${ordinal(d.place)}</td><td class="malayalam">${d.school}</td><td class="malayalam">${d.student||'-'}</td><td>${d.grade}</td><td><b>${d.points}</b></td></tr>`).join('') || `<tr><td colspan="8" class="empty">ഡാറ്റ ലഭ്യമല്ല</td></tr>`}</tbody>
+  </table></div>`;
+}
+function downloadWinnersListPDF(){ downloadElementAsPDF(document.getElementById('winnersListTable'), 'winners-list.pdf'); }
+function downloadWinnersListExcel(){
+  const data = winnersListData();
+  const aoa = [['കോഡ്','ഇനം','കാറ്റഗറി','സ്ഥാനം','സ്കൂൾ','പേര്','ഗ്രേഡ്','പോയിന്റ്'],
+    ...data.map(d=>[d.code,d.name,d.cat,d.place,d.school,d.student||'-',d.grade,d.points])];
+  downloadAOAExcel(aoa, 'winners-list.xlsx', 'Winners');
+}
+
+/* ---- Prize distribution list (school-wise grouping of all graded winners) ---- */
+function prizeDistributionData(){
+  const bySchool = {}; const order = [];
+  ITEMS.filter(i=>ENTRIES.some(e=>e.itemCode===i.code)).forEach(item=>{
+    computeResult(item.code).filter(r=>r.grade).forEach(r=>{
+      const sid = r.schoolId||r.schoolName;
+      if(!bySchool[sid]){ bySchool[sid] = {school:r.schoolName||'-', rows:[]}; order.push(sid); }
+      bySchool[sid].rows.push({code:item.code, name:item.name, cat:item.cat,
+        student: r.isGroup? '' : (r.name||'-'), grade:r.grade, points:r.points});
+    });
+  });
+  return order.map(sid=>bySchool[sid]).sort((a,b)=>a.school.localeCompare(b.school));
+}
+function renderPrizeDistributionReport(){
+  const groups = prizeDistributionData();
+  let html = groups.map(g=>`
+    <h4 class="malayalam" style="margin:14px 0 6px;">${g.school}</h4>
+    <div class="table-wrap"><table class="prizeDistTable">
+      <thead><tr><th>കോഡ്</th><th class="malayalam">ഇനം</th><th>കാറ്റ.</th><th class="malayalam">പേര്</th><th class="malayalam">ഗ്രേഡ്</th><th class="malayalam">പോയിന്റ്</th></tr></thead>
+      <tbody>${g.rows.map(r=>`<tr><td>${r.code}</td><td class="malayalam">${r.name}</td><td><span class="badge ${r.cat}">${r.cat}</span></td><td class="malayalam">${r.student||'-'}</td><td>${r.grade}</td><td><b>${r.points}</b></td></tr>`).join('')}</tbody>
+    </table></div>`).join('');
+  document.getElementById('reportPrizeDistBox').innerHTML = html || `<div class="empty malayalam">ഡാറ്റ ലഭ്യമല്ല</div>`;
+}
+function downloadPrizeDistributionPDF(){ downloadElementAsPDF(document.getElementById('reportPrizeDistBox'), 'prize-distribution-list.pdf'); }
+function downloadPrizeDistributionExcel(){
+  const groups = prizeDistributionData();
+  const aoa = [['സ്കൂൾ','കോഡ്','ഇനം','കാറ്റഗറി','പേര്','ഗ്രേഡ്','പോയിന്റ്']];
+  groups.forEach(g=> g.rows.forEach(r=> aoa.push([g.school, r.code, r.name, r.cat, r.student||'-', r.grade, r.points])));
+  downloadAOAExcel(aoa, 'prize-distribution-list.xlsx', 'PrizeDistribution');
+}
+
 /* ---- ID cards ---- */
 function populateIdCardSchoolSelect(){
   const sel = document.getElementById('idCardSchoolSelect');
@@ -3027,6 +3139,9 @@ function renderReportsTab(){
   renderVenueWiseReport();
   renderCatWiseReport();
   renderCatScoreboardReport();
+  renderParticipantsListReport();
+  renderWinnersListReport();
+  renderPrizeDistributionReport();
 }
 
 /* ============================================================
