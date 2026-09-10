@@ -1317,8 +1317,26 @@ window.storage = {
    without anyone refreshing the page. */
 let liveSyncTimer = null;
 let pendingSyncKeys = new Set();
+// Guards against a save-in-progress being clobbered by our own live-sync echo:
+// e.g. addEntry() writes 'students' then 'entries' one after another — the
+// 'students' write's own onValue callback used to fire scheduleLiveRerender()
+// mid-sequence, whose loadAll() re-fetched 'entries' from Firebase *before*
+// the new entry had been saved, overwriting the in-memory ENTRIES array and
+// silently discarding the entry that was about to be persisted (a new child
+// would then appear to "exist" — reg no. issued — but with none of their
+// items registered, until the office re-opened and re-saved them). Any
+// function that performs more than one sequential save() call should wrap
+// them in suspendLiveSync()/resumeLiveSync() so the debounced full-reload
+// can't run until every write in that batch has actually landed.
+let LIVE_SYNC_SUSPENDED = 0;
+function suspendLiveSync(){ LIVE_SYNC_SUSPENDED++; }
+function resumeLiveSync(){
+  LIVE_SYNC_SUSPENDED = Math.max(0, LIVE_SYNC_SUSPENDED-1);
+  if(LIVE_SYNC_SUSPENDED===0 && pendingSyncKeys.size){ scheduleLiveRerender(); }
+}
 function scheduleLiveRerender(key){
   if(key) pendingSyncKeys.add(key);
+  if(LIVE_SYNC_SUSPENDED>0) return; // a local multi-step save is in flight — catch up once it's done
   if(liveSyncTimer) clearTimeout(liveSyncTimer);
   liveSyncTimer = setTimeout(async ()=>{
     const keys = pendingSyncKeys; pendingSyncKeys = new Set();
@@ -1873,8 +1891,11 @@ async function addSchool(){
   const id = uid();
   SCHOOLS.push({id, name, code, place, contactPerson, contactNumber});
   AUTH.schoolAccounts[id] = {username, password};
-  await saveSchools();
-  await saveAuth();
+  suspendLiveSync();
+  try{
+    await saveSchools();
+    await saveAuth();
+  } finally { resumeLiveSync(); }
   ['schoolName','schoolCode','schoolPlace','schoolContactPerson','schoolContactNumber','schoolUsername','schoolPassword'].forEach(id=>document.getElementById(id).value='');
   toast('സ്കൂൾ ചേർത്തു & ലോഗിൻ നൽകി ✓');
   renderSchools();
@@ -1883,8 +1904,11 @@ async function addSchool(){
 async function removeSchool(id){
   SCHOOLS = SCHOOLS.filter(s=>s.id!==id);
   delete AUTH.schoolAccounts[id];
-  await saveSchools();
-  await saveAuth();
+  suspendLiveSync();
+  try{
+    await saveSchools();
+    await saveAuth();
+  } finally { resumeLiveSync(); }
   renderSchools();
   renderUsersTab();
   toast('നീക്കം ചെയ്തു');
@@ -2015,7 +2039,7 @@ setInterval(()=>{
     lastPolledEntryState = state;
     renderEntryItemChecklist();
   }
-}, 400);
+}, 120);
 function populateEntrySchoolSelect(){
   const sel = document.getElementById('entrySchool');
   sel.innerHTML = SCHOOLS.map(s=>`<option value="${s.id}">${s.code} — ${s.name}</option>`).join('') || `<option value="">സ്കൂൾ ചേർക്കുക</option>`;
@@ -2023,7 +2047,10 @@ function populateEntrySchoolSelect(){
     sel.value = CURRENT_USER.schoolId;
     sel.disabled = true;
   }
-  if(!sel.dataset.init){ sel.addEventListener('change', populateEntryStudentSelect); sel.dataset.init = 1; }
+  if(!sel.dataset.init){
+    ['change','input','blur'].forEach(evt=>sel.addEventListener(evt, populateEntryStudentSelect));
+    sel.dataset.init = 1;
+  }
   populateEntryStudentSelect();
 }
 function populateEntryStudentSelect(){
@@ -2033,7 +2060,10 @@ function populateEntryStudentSelect(){
   const list = STUDENTS.filter(s=>s.schoolId===schoolId);
   sel.innerHTML = `<option value="new">+ പുതിയ കുട്ടി ചേർക്കുക</option>` +
     list.map(s=>`<option value="${s.id}">${s.regNo} — ${s.name}</option>`).join('');
-  if(!sel.dataset.init){ sel.addEventListener('change', toggleNewStudentFields); sel.dataset.init = 1; }
+  if(!sel.dataset.init){
+    ['change','input','blur'].forEach(evt=>sel.addEventListener(evt, toggleNewStudentFields));
+    sel.dataset.init = 1;
+  }
   toggleNewStudentFields();
 }
 function toggleNewStudentFields(){
@@ -2107,13 +2137,23 @@ async function addEntry(){
     if(!student){ toast('കുട്ടിയെ കണ്ടെത്താനായില്ല'); return; }
   }
 
-  const checked = Array.from(document.querySelectorAll('#entryItemChecklist input.entchk:checked')).map(c=>parseInt(c.value));
-  if(!checked.length){ toast('ഒരു ഇനമെങ്കിലും തിരഞ്ഞെടുക്കുക'); return; }
+  // Force the checklist to reflect the *current* school/student/class selection
+  // right now, rather than trusting whatever the last 'change' event (or the
+  // slow safety-net poll) happened to render. Some Android WebViews don't fire
+  // 'change' on a native <select> the instant a value is picked, which used to
+  // let a stale checklist (wrong category, or empty) sit on screen long enough
+  // for a first "Add" click to silently fail or grab the wrong items.
+  renderEntryItemChecklist();
+
   const studentCat = categoryForClass(student.class);
-  if(studentCat && checked.some(code=>{ const it=ITEMS.find(i=>i.code===code); return it && it.cat!==studentCat; })){
-    toast('ക്ലാസിന്റെ കാറ്റഗറിയിൽ പെടാത്ത ഇനം തിരഞ്ഞെടുത്തിരിക്കുന്നു — പേജ് ഒന്ന് റീഫ്രഷ് ചെയ്ത് വീണ്ടും ശ്രമിക്കുക');
-    return;
+  let checked = Array.from(document.querySelectorAll('#entryItemChecklist input.entchk:checked')).map(c=>parseInt(c.value));
+  // Any checked box that doesn't belong to this student's category is left
+  // over from before the checklist caught up — drop it silently rather than
+  // blocking the whole submission and forcing the office to redo everything.
+  if(studentCat){
+    checked = checked.filter(code=>{ const it=ITEMS.find(i=>i.code===code); return it && it.cat===studentCat; });
   }
+  if(!checked.length){ toast('ഒരു ഇനമെങ്കിലും തിരഞ്ഞെടുക്കുക'); return; }
 
   let added = 0, skipped = [];
   checked.forEach(itemCode=>{
@@ -2142,12 +2182,15 @@ async function addEntry(){
     return;
   }
 
-  if(isNewStudent){
-    STUDENTS.push(student);
-    await saveStudents();
-    await saveConfig();
-  }
-  await saveEntries();
+  suspendLiveSync();
+  try{
+    if(isNewStudent){
+      STUDENTS.push(student);
+      await saveStudents();
+      await saveConfig();
+    }
+    await saveEntries();
+  } finally { resumeLiveSync(); }
   document.getElementById('entryName').value='';
   if(document.getElementById('entryClass')) document.getElementById('entryClass').value='';
   if(document.getElementById('entryPhoto')) document.getElementById('entryPhoto').value='';
@@ -2246,9 +2289,12 @@ async function deleteStudentCompletely(){
   STUDENTS = STUDENTS.filter(s=>s.id!==sid);
   ENTRIES = ENTRIES.filter(e=>e.studentId!==sid);
   removedEntryIds.forEach(id=>{ delete SCORES[id]; });
-  await saveStudents();
-  await saveEntries();
-  await saveScoresRemote();
+  suspendLiveSync();
+  try{
+    await saveStudents();
+    await saveEntries();
+    await saveScoresRemote();
+  } finally { resumeLiveSync(); }
   closeEditStudentModal();
   renderEntries();
   toast('കുട്ടിയെ പൂർണമായും ഒഴിവാക്കി ✓');
@@ -2288,8 +2334,11 @@ async function saveStudentEditModal(){
   // Keep name/class copies on remaining entries in sync with the student record.
   ENTRIES.forEach(e=>{ if(e.studentId===EDIT_STUDENT_ID){ e.name = student.name; e.class = student.class; } });
 
-  await saveStudents();
-  await saveEntries();
+  suspendLiveSync();
+  try{
+    await saveStudents();
+    await saveEntries();
+  } finally { resumeLiveSync(); }
   closeEditStudentModal();
   renderEntries();
   toast('കുട്ടിയുടെ വിവരങ്ങൾ അപ്ഡേറ്റ് ചെയ്തു ✓' + (editSkipped.length ? ` (സ്കൂളിൽ നിന്ന് നേരത്തെ മറ്റൊരാൾക്ക് ചേർത്തതിനാൽ ${editSkipped.length} ഇനം ചേർത്തില്ല)` : ''));
@@ -2688,8 +2737,11 @@ function renderScoringTable(){
   });
 }
 async function saveScores(){
-  await saveScoresRemote();
-  await saveEntries();
+  suspendLiveSync();
+  try{
+    await saveScoresRemote();
+    await saveEntries();
+  } finally { resumeLiveSync(); }
   toast('മാർക്കും ചെസ്റ്റ് നമ്പറും സേവ് ചെയ്തു ✓');
 }
 
