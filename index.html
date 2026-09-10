@@ -790,8 +790,8 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
       <div class="note malayalam" id="studentRegNoNote" style="display:none;"></div>
 
       <label class="malayalam" style="margin-top:14px;">ഇനങ്ങൾ തിരഞ്ഞെടുക്കുക (ഒരു കുട്ടിയുടെ എല്ലാ ഇനങ്ങളും ഒരുമിച്ച് ചേർക്കാം)</label>
+      <div class="note malayalam" id="entryCatDisplay" style="font-weight:700;">കാറ്റഗറി കാണാൻ ആദ്യം ക്ലാസ് തിരഞ്ഞെടുക്കുക</div>
       <div class="filters">
-        <select id="entryCat"></select>
         <input type="text" id="entryItemSearch" placeholder="ഇനം അല്ലെങ്കിൽ കോഡ് തിരയുക...">
       </div>
       <div class="note malayalam" id="entryLimitNote" style="display:none;"></div>
@@ -1141,18 +1141,34 @@ function romanToInt(s){
   }
   return result || null;
 }
+// A class-range part may be written as a roman numeral ("I", "III") or a
+// plain number ("1", "3") — accept either.
+function classPartToInt(s){
+  const r = romanToInt(s);
+  if(r!==null) return r;
+  const n = parseInt(s, 10);
+  return isNaN(n) ? null : n;
+}
+// Known default class-ranges for the three standard categories. Used as a
+// fallback below: if the catalog that got synced down from Firebase (which
+// may be an older snapshot saved before class-based auto-category existed,
+// or one a district admin edited without touching this field) has a missing
+// range for one of these keys, we still know what range it SHOULD be
+// instead of silently failing to detect any category.
+const DEFAULT_CLASS_RANGES = {I:'1-2', II:'3-5', III:'6-7'};
 function categoryForClass(cls){
   const n = parseInt(cls);
   if(!n) return '';
   for(const c of Object.keys(CATS)){
-    const parts = (CATS[c].cls||'').split(/[–—-]/).map(s=>s.trim()).filter(Boolean);
-    if(parts.length>=2){
-      const lo = romanToInt(parts[0]), hi = romanToInt(parts[parts.length-1]);
-      if(lo!==null && hi!==null && n>=lo && n<=hi) return c;
-    } else if(parts.length===1){
-      const only = romanToInt(parts[0]);
-      if(only!==null && n===only) return c;
+    let clsStr = (CATS[c] && CATS[c].cls) ? CATS[c].cls : '';
+    let parts = clsStr.split(/[–—-]/).map(s=>s.trim()).filter(Boolean);
+    let lo = parts.length ? classPartToInt(parts[0]) : null;
+    let hi = parts.length ? classPartToInt(parts[parts.length-1]) : null;
+    if(lo===null && DEFAULT_CLASS_RANGES[c]){
+      const fparts = DEFAULT_CLASS_RANGES[c].split(/[–—-]/).map(s=>s.trim()).filter(Boolean);
+      lo = classPartToInt(fparts[0]); hi = classPartToInt(fparts[fparts.length-1]);
     }
+    if(lo!==null && hi!==null && n>=lo && n<=hi) return c;
   }
   return '';
 }
@@ -1300,11 +1316,16 @@ window.storage = {
    — this is what makes results appear live for all ~300 viewers
    without anyone refreshing the page. */
 let liveSyncTimer = null;
-function scheduleLiveRerender(){
+let pendingSyncKeys = new Set();
+function scheduleLiveRerender(key){
+  if(key) pendingSyncKeys.add(key);
   if(liveSyncTimer) clearTimeout(liveSyncTimer);
   liveSyncTimer = setTimeout(async ()=>{
+    const keys = pendingSyncKeys; pendingSyncKeys = new Set();
     await loadAll();
-    resetCategorySelectCaches();
+    // Only 'catalog' changes (district admin adding/removing categories or items)
+    // require rebuilding the cached filter <select> option lists.
+    if(keys.has('catalog')) resetCategorySelectCaches();
     renderLoginPublicBoard();
     if(CURRENT_USER){
       renderHome(); renderItems(); renderSchools(); renderEntries();
@@ -1315,7 +1336,7 @@ function scheduleLiveRerender(){
 function startLiveSync(){
   if(!fbReady) return;
   ['scores','entries','schools','students','schedule','config','catalog'].forEach(key=>{
-    fbDb.ref('kalotsavam/'+key).on('value', ()=>{ scheduleLiveRerender(); });
+    fbDb.ref('kalotsavam/'+key).on('value', ()=>{ scheduleLiveRerender(key); });
   });
 }
 
@@ -1636,13 +1657,24 @@ document.getElementById('tabnav').addEventListener('click', e=>{
    HOME
    ============================================================ */
 function renderHome(){
+  const isSchool = CURRENT_USER && CURRENT_USER.role === 'school';
+  const schoolId = isSchool ? CURRENT_USER.schoolId : null;
   const totalItems = ITEMS.length;
-  const totalSchools = SCHOOLS.length;
-  const totalEntries = ENTRIES.length;
-  const scored = Object.keys(SCORES).length;
+  let card2Value, card2Label, totalEntries, scored;
+  if(isSchool){
+    card2Value = STUDENTS.filter(s=>s.schoolId===schoolId).length;
+    card2Label = 'രജിസ്റ്റർ ചെയ്ത കുട്ടികൾ';
+    totalEntries = ENTRIES.filter(e=>e.schoolId===schoolId).length;
+    scored = ENTRIES.filter(e=>e.schoolId===schoolId && SCORES[e.id]).length;
+  } else {
+    card2Value = SCHOOLS.length;
+    card2Label = 'രജിസ്റ്റർ ചെയ്ത സ്കൂളുകൾ';
+    totalEntries = ENTRIES.length;
+    scored = Object.keys(SCORES).length;
+  }
   document.getElementById('homeStats').innerHTML = `
     <div class="stat"><b>${totalItems}</b><span>മത്സര ഇനങ്ങൾ</span></div>
-    <div class="stat"><b>${totalSchools}</b><span>രജിസ്റ്റർ ചെയ്ത സ്കൂളുകൾ</span></div>
+    <div class="stat"><b>${card2Value}</b><span class="malayalam">${card2Label}</span></div>
     <div class="stat"><b>${totalEntries}</b><span>ആകെ എൻട്രികൾ</span></div>
     <div class="stat"><b>${scored}</b><span>മാർക്ക് നൽകിയവ</span></div>
   `;
@@ -1698,7 +1730,7 @@ document.getElementById('itemSearch').addEventListener('input', renderItems);
    CATEGORY / ITEM CATALOG MANAGEMENT — district admin only
    ============================================================ */
 function resetCategorySelectCaches(){
-  ['itemCatFilter','entryCat','editItemCat','venItemCatFilter','entryFilterCat','pdfFilterCat'].forEach(id=>{
+  ['itemCatFilter','editItemCat','venItemCatFilter','entryFilterCat','pdfFilterCat'].forEach(id=>{
     const el = document.getElementById(id);
     if(el) delete el.dataset.init;
   });
@@ -1885,31 +1917,30 @@ function genRegNo(schoolId, schoolCode){
   const n = String(CONFIG.schoolCounters[schoolId]).padStart(3,'0');
   return `${(schoolCode||'').toUpperCase()}${n}`;
 }
-function populateEntryCatSelect(){
-  const sel = document.getElementById('entryCat');
-  if(sel.dataset.init) return;
-  sel.innerHTML = '<option value="">ആദ്യം ക്ലാസ് തിരഞ്ഞെടുക്കുക</option>' + Object.keys(CATS).map(c=>`<option value="${c}">${CATS[c].name} (${c})</option>`).join('');
-  sel.addEventListener('change', ()=>{ renderEntryItemChecklist(); });
-  sel.dataset.init = 1;
-}
-// Locks the category select to the class-derived category (cat==='' unlocks it,
-// e.g. while no class/student is chosen yet) and re-renders the checklist so only
-// that category's items are even visible/selectable.
-function applyAutoCategory(cat){
-  populateEntryCatSelect();
-  const sel = document.getElementById('entryCat');
-  if(cat && CATS[cat]){
-    sel.value = cat;
-    sel.disabled = true;
-  } else {
-    sel.value = '';
-    sel.disabled = false;
+// The class a new/selected student belongs to: the class typed in the "new
+// child" form, or the stored class of whichever existing child is selected.
+function currentEntryClass(){
+  const studentSel = document.getElementById('entryStudentSelect') ? document.getElementById('entryStudentSelect').value : '';
+  if(studentSel && studentSel!=='new'){
+    const st = STUDENTS.find(s=>s.id===studentSel);
+    return st ? st.class : '';
   }
-  renderEntryItemChecklist();
+  const clsEl = document.getElementById('entryClass');
+  return clsEl ? clsEl.value : '';
+}
+// Category is never chosen by the user — it's always derived fresh from the
+// current class, so it can't go stale or get wiped by an unrelated re-render.
+function currentEntryCategory(){
+  return categoryForClass(currentEntryClass());
+}
+function updateEntryCatDisplay(cat){
+  const el = document.getElementById('entryCatDisplay');
+  if(!el) return;
+  el.textContent = (cat && CATS[cat]) ? `കാറ്റഗറി: ${CATS[cat].name} (${cat})` : 'കാറ്റഗറി കാണാൻ ആദ്യം ക്ലാസ് തിരഞ്ഞെടുക്കുക';
 }
 function renderEntryItemChecklist(){
-  populateEntryCatSelect();
-  const cat = document.getElementById('entryCat').value;
+  const cat = currentEntryCategory();
+  updateEntryCatDisplay(cat);
   const q = (document.getElementById('entryItemSearch').value||'').trim().toLowerCase();
   const schoolId = CURRENT_USER && CURRENT_USER.role==='school' ? CURRENT_USER.schoolId : document.getElementById('entrySchool').value;
   const studentSel = document.getElementById('entryStudentSelect') ? document.getElementById('entryStudentSelect').value : '';
@@ -1937,7 +1968,7 @@ if(!document.getElementById('entryItemChecklist').dataset.limitInit){
 // never limited): disables checkboxes that would push either count past its cap,
 // counting both already-saved entries for this student and boxes checked right now.
 function updateEntryChecklistLimits(){
-  const cat = document.getElementById('entryCat').value;
+  const cat = currentEntryCategory();
   const box = document.getElementById('entryItemChecklist');
   const noteEl = document.getElementById('entryLimitNote');
   const limits = CATEGORY_ITEM_LIMITS[cat];
@@ -1968,9 +1999,23 @@ function updateEntryChecklistLimits(){
   }
 }
 document.getElementById('entryItemSearch').addEventListener('input', renderEntryItemChecklist);
-document.getElementById('entryClass').addEventListener('change', ()=>{
-  applyAutoCategory(categoryForClass(document.getElementById('entryClass').value));
-});
+['change','input'].forEach(evt=>document.getElementById('entryClass').addEventListener(evt, renderEntryItemChecklist));
+// Fallback safety net: some Android WebViews (e.g. a file-manager's built-in
+// browser opening this file via a content:// URI) don't reliably fire
+// change/input for a native <select> picker. Poll while the entries panel is
+// visible so the category/checklist can never get stuck out of sync with
+// whatever class is actually selected.
+let lastPolledEntryState = null;
+setInterval(()=>{
+  const panel = document.getElementById('panel-entries');
+  if(!panel || !panel.classList.contains('active')) return;
+  const studentSel = document.getElementById('entryStudentSelect');
+  const state = (studentSel ? studentSel.value : '') + '|' + currentEntryClass();
+  if(state !== lastPolledEntryState){
+    lastPolledEntryState = state;
+    renderEntryItemChecklist();
+  }
+}, 400);
 function populateEntrySchoolSelect(){
   const sel = document.getElementById('entrySchool');
   sel.innerHTML = SCHOOLS.map(s=>`<option value="${s.id}">${s.code} — ${s.name}</option>`).join('') || `<option value="">സ്കൂൾ ചേർക്കുക</option>`;
@@ -2000,11 +2045,11 @@ function toggleNewStudentFields(){
     const st = STUDENTS.find(s=>s.id===sel.value);
     note.style.display='block';
     note.innerHTML = st? `രജിസ്റ്റർ നമ്പർ: <b>${st.regNo}</b>` : '';
-    applyAutoCategory(st? categoryForClass(st.class) : '');
+    renderEntryItemChecklist();
   } else {
     note.style.display='none';
     document.getElementById('entryClass').value = '';
-    applyAutoCategory('');
+    renderEntryItemChecklist();
   }
 }
 function resizeImageToDataURL(file, maxW=220, maxH=280){
@@ -2064,6 +2109,11 @@ async function addEntry(){
 
   const checked = Array.from(document.querySelectorAll('#entryItemChecklist input.entchk:checked')).map(c=>parseInt(c.value));
   if(!checked.length){ toast('ഒരു ഇനമെങ്കിലും തിരഞ്ഞെടുക്കുക'); return; }
+  const studentCat = categoryForClass(student.class);
+  if(studentCat && checked.some(code=>{ const it=ITEMS.find(i=>i.code===code); return it && it.cat!==studentCat; })){
+    toast('ക്ലാസിന്റെ കാറ്റഗറിയിൽ പെടാത്ത ഇനം തിരഞ്ഞെടുത്തിരിക്കുന്നു — പേജ് ഒന്ന് റീഫ്രഷ് ചെയ്ത് വീണ്ടും ശ്രമിക്കുക');
+    return;
+  }
 
   let added = 0, skipped = [];
   checked.forEach(itemCode=>{
