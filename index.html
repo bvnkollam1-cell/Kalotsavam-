@@ -2395,13 +2395,44 @@ function groupEntriesByStudent(list){
   });
   return order.map(k=>groups[k]);
 }
+// Buckets student groups (from groupEntriesByStudent) by the category their
+// class falls under, in canonical category order (I, II, III, ...), so
+// school-wise entry exports can be printed section-by-section — e.g. all
+// Prathmik-category children, then all Sisu-category children, then Bala —
+// instead of one flat undifferentiated list.
+function sortEntryGroupsByCategory(groups){
+  const OTHER = '__other__';
+  const buckets = {};
+  groups.forEach(g=>{
+    const cat = categoryForClass(g.class) || OTHER;
+    if(!buckets[cat]) buckets[cat] = [];
+    buckets[cat].push(g);
+  });
+  const orderedKeys = Object.keys(CATS).filter(c=>buckets[c]);
+  if(buckets[OTHER]) orderedKeys.push(OTHER);
+  return orderedKeys.map(c=>({
+    key:c,
+    label: c===OTHER ? 'മറ്റുള്ളവ (ക്ലാസ് വ്യക്തമല്ല)' : `${CATS[c].name} (${c}) വിഭാഗം`,
+    students: buckets[c]
+  }));
+}
 async function downloadSchoolEntriesPDF(schoolId){
   const school = SCHOOLS.find(s=>s.id===schoolId);
   if(!school){ toast('സ്കൂൾ കണ്ടെത്താനായില്ല'); return; }
   const groups = groupEntriesByStudent(ENTRIES.filter(e=>e.schoolId===schoolId));
+  const sections = sortEntryGroupsByCategory(groups);
+  const bodyRows = sections.length ? sections.map(sec=>`
+        <tr><td colspan="4" style="padding:6px 8px;border:1px solid #d8c39a;background:#0d4d47;color:#fff;font-weight:700;">${sec.label} — ${sec.students.length} കുട്ടികൾ</td></tr>
+        ${sec.students.map(g=>`<tr>
+          <td style="padding:6px 8px;border:1px solid #eee;vertical-align:top;">${g.regNo||'-'}</td>
+          <td style="padding:6px 8px;border:1px solid #eee;vertical-align:top;">${g.name}</td>
+          <td style="padding:6px 8px;border:1px solid #eee;vertical-align:top;">${g.class||'-'}</td>
+          <td style="padding:6px 8px;border:1px solid #eee;">${g.items.map(e=>`${e.itemCode} — ${e.itemName}`).join(', ')}</td>
+        </tr>`).join('')}
+      `).join('') : '<tr><td colspan="4" style="padding:10px;">എൻട്രികളില്ല</td></tr>';
   const html = `
     <h2 style="font-family:'Baloo 2',sans-serif;color:#0d4d47;margin:0 0 4px;">${school.name} (${school.code})</h2>
-    <p style="margin:0 0 14px;color:#5c4713;">രജിസ്റ്റർ ചെയ്ത കുട്ടികളുടെ ലിസ്റ്റ് — കലാമൃതം 2026-27</p>
+    <p style="margin:0 0 14px;color:#5c4713;">രജിസ്റ്റർ ചെയ്ത കുട്ടികളുടെ ലിസ്റ്റ് (കാറ്റഗറി അടിസ്ഥാനത്തിൽ) — കലാമൃതം 2026-27</p>
     <table style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead>
         <tr style="background:#efe2c8;">
@@ -2412,12 +2443,7 @@ async function downloadSchoolEntriesPDF(schoolId){
         </tr>
       </thead>
       <tbody>
-        ${groups.map(g=>`<tr>
-          <td style="padding:6px 8px;border:1px solid #eee;vertical-align:top;">${g.regNo||'-'}</td>
-          <td style="padding:6px 8px;border:1px solid #eee;vertical-align:top;">${g.name}</td>
-          <td style="padding:6px 8px;border:1px solid #eee;vertical-align:top;">${g.class||'-'}</td>
-          <td style="padding:6px 8px;border:1px solid #eee;">${g.items.map(e=>`${e.itemCode} — ${e.itemName}`).join(', ')}</td>
-        </tr>`).join('') || '<tr><td colspan="4" style="padding:10px;">എൻട്രികളില്ല</td></tr>'}
+        ${bodyRows}
       </tbody>
     </table>`;
   const {overlay, inner} = openCaptureSurface(html, 700);
@@ -2442,8 +2468,12 @@ function downloadSchoolEntriesExcel(schoolId){
   if(!school){ toast('സ്കൂൾ കണ്ടെത്താനായില്ല'); return; }
   const groups = groupEntriesByStudent(ENTRIES.filter(e=>e.schoolId===schoolId));
   if(!groups.length){ toast('ഈ സ്കൂളിന് എൻട്രികളില്ല'); return; }
+  const sections = sortEntryGroupsByCategory(groups);
   const aoa = [['രജി. നമ്പർ','പേര്','ക്ലാസ്','ഇനങ്ങൾ']];
-  groups.forEach(g=>aoa.push([g.regNo||'', g.name, g.class||'', g.items.map(e=>`${e.itemCode} — ${e.itemName}`).join(', ')]));
+  sections.forEach(sec=>{
+    aoa.push([`— ${sec.label} —`, '', '', '']);
+    sec.students.forEach(g=>aoa.push([g.regNo||'', g.name, g.class||'', g.items.map(e=>`${e.itemCode} — ${e.itemName}`).join(', ')]));
+  });
   downloadAOAExcel(aoa, `${school.code}-entries.xlsx`, 'Entries');
 }
 
