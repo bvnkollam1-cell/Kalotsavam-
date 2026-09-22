@@ -458,6 +458,7 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
   <button data-tab="schools">🏫 സ്കൂളുകൾ</button>
   <button data-tab="venues">📍 വേദി/ഷെഡ്യൂൾ</button>
   <button data-tab="entries">📝 എൻട്രി</button>
+  <button data-tab="registration">📋 രജിസ്ട്രേഷൻ</button>
   <button data-tab="scoring">🖊️ മാർക്ക്</button>
   <button data-tab="results">🏆 ഫലങ്ങൾ</button>
   <button data-tab="reports">📊 റിപ്പോർട്ട്</button>
@@ -819,6 +820,44 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
     </div>
   </section>
 
+  <!-- ============ EVENT-DAY REGISTRATION (school only) ============ -->
+  <section class="panel" id="panel-registration">
+    <h3 class="section-head malayalam">കലാമേള ദിവസം പങ്കെടുക്കുന്നവരുടെ രജിസ്ട്രേഷൻ</h3>
+    <div class="card">
+      <div class="note malayalam">📌 നിങ്ങളുടെ സ്കൂളിൽ നിന്ന് കലാമേള ദിവസം പങ്കെടുക്കുന്നവരുടെ എണ്ണം മാത്രം ഇവിടെ നൽകുക.</div>
+      <div class="grid2" style="margin-top:12px;">
+        <div>
+          <label class="malayalam">വിദ്യാർത്ഥികൾ</label>
+          <input type="number" id="attStudents" min="0" step="1" value="0" inputmode="numeric">
+        </div>
+        <div>
+          <label class="malayalam">അധ്യാപകർ & അനധ്യാപകർ</label>
+          <input type="number" id="attStaff" min="0" step="1" value="0" inputmode="numeric">
+        </div>
+        <div>
+          <label class="malayalam">വിദ്യാലയ സമിതി</label>
+          <input type="number" id="attCommittee" min="0" step="1" value="0" inputmode="numeric">
+        </div>
+        <div>
+          <label class="malayalam">രക്ഷിതാക്കൾ</label>
+          <input type="number" id="attParents" min="0" step="1" value="0" inputmode="numeric">
+        </div>
+        <div>
+          <label class="malayalam">മറ്റുള്ളവർ</label>
+          <input type="number" id="attOthers" min="0" step="1" value="0" inputmode="numeric">
+        </div>
+        <div>
+          <label class="malayalam">ആകെ</label>
+          <input type="number" id="attTotal" value="0" readonly style="font-weight:800;background:#f4f0ff;">
+        </div>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <button class="btn malayalam" onclick="saveSchoolAttendanceRegistration()">💾 രജിസ്ട്രേഷൻ സേവ് ചെയ്യുക</button>
+        <span id="attSavedNote" class="note malayalam" style="margin:0;"></span>
+      </div>
+    </div>
+  </section>
+
   <!-- ============ SCORING ============ -->
   <section class="panel" id="panel-scoring">
     <h3 class="section-head">മാർക്ക് രേഖപ്പെടുത്തൽ</h3>
@@ -854,6 +893,7 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
       <label>ഇനം തിരഞ്ഞെടുക്കുക</label>
       <select id="resultItemSelect"></select>
       <div id="resultBox"></div>
+      <div id="schoolResultPdfAction" style="margin-top:10px;display:none;"><button class="btn small malayalam" onclick="downloadSchoolResultsPDF()">📄 എന്റെ സ്കൂളിന്റെ റിസൾട്ട് PDF</button></div>
     </div>
 
     <div class="card">
@@ -932,6 +972,16 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
       </select>
       <div style="margin-top:10px;"><button class="btn malayalam" onclick="downloadIdCards()">🪪 ഐഡി കാർഡുകൾ PDF ആയി ഡൗൺലോഡ് ചെയ്യുക</button></div>
       <div class="note malayalam">📌 ഓരോ കാർഡും A6 (105 × 148 മി.മീ) — A4 ഷീറ്റിൽ 4 എണ്ണം, A3 ഷീറ്റിൽ 8 എണ്ണം. പേര്, രജി. നമ്പർ, കാറ്റഗറി, സ്കൂൾ, ഫോട്ടോ, ഇനങ്ങൾ, വേദി, സമയം എന്നിവയും മുഴുവൻ വിവരങ്ങളുള്ള QR കോഡും ഉൾപ്പെടും.</div>
+    </div>
+
+    <h3 class="section-head malayalam">കലാമേള ദിവസം പങ്കെടുക്കുന്നവരുടെ കൺസോളിഡേറ്റഡ് രജിസ്ട്രേഷൻ</h3>
+    <div class="card">
+      <div id="participationConsolidatedBox"></div>
+      <div class="row-actions" style="margin-top:10px;">
+        <button class="btn small ghost malayalam" onclick="downloadParticipationConsolidatedPDF()">⬇️ Consolidated PDF</button>
+        <button class="btn small secondary malayalam" onclick="downloadParticipationConsolidatedExcel()">⬇️ Consolidated Excel</button>
+      </div>
+      <div class="note malayalam" style="margin-top:8px;">📌 എല്ലാ വിദ്യാലയങ്ങളുടെയും രജിസ്ട്രേഷൻ ഒരുമിച്ച് ജില്ലാ റിപ്പോർട്ടിൽ നിന്ന് ഡൗൺലോഡ് ചെയ്യാം.</div>
     </div>
 
     <h3 class="section-head malayalam">സ്കൂൾ വൈസ് രജിസ്ട്രേഷൻ റിപ്പോർട്ട്</h3>
@@ -1274,6 +1324,7 @@ let ENTRIES = [];
 let SCORES = {}; // entryId -> {j1,j2,j3}
 let SCHEDULE = {}; // itemCode -> {venue, date, time}
 let PUBLISHED = {}; // itemCode -> true once an official has saved marks (locked; district can unlock)
+let EVENT_ATTENDANCE = {}; // schoolId -> {students, staff, committee, parents, others, total, updatedAt}
 let AUTH = { districtPassword:'district2026', schoolAccounts:{}, officials:[] };
 // schoolAccounts: { [schoolId]: {username, password} }
 // officials: [{id, name, username, password}]
@@ -1379,6 +1430,8 @@ function scheduleLiveRerender(key){
     renderLoginPublicBoard();
     if(CURRENT_USER){
       renderHome(); renderItems(); renderSchools(); renderEntries();
+      if(CURRENT_USER.role==='school') renderSchoolAttendanceRegistration();
+  if(CURRENT_USER.role==='school') renderSchoolAttendanceRegistration();
       renderUsersTab(); renderCategoryScoreboards();
       // These two panels build their tables once when the tab is opened rather
       // than on every render call, so a remote change (e.g. a school removing a
@@ -1394,7 +1447,7 @@ function scheduleLiveRerender(key){
 }
 function startLiveSync(){
   if(!fbReady) return;
-  ['scores','entries','schools','students','schedule','config','catalog'].forEach(key=>{
+  ['scores','entries','schools','students','schedule','config','catalog','eventAttendance'].forEach(key=>{
     fbDb.ref('kalotsavam/'+key).on('value', ()=>{ scheduleLiveRerender(key); });
   });
 }
@@ -1412,7 +1465,7 @@ function withTimeout(promise, ms){
 async function loadAll(){
   // Run every fetch in parallel (instead of one-after-another) so a single slow
   // key can't delay — or with the timeout above, block — everything else.
-  const [schoolsR, studentsR, entriesR, scoresR, scheduleR, configR, authR, catalogR, publishedR] = await Promise.allSettled([
+  const [schoolsR, studentsR, entriesR, scoresR, scheduleR, configR, authR, catalogR, publishedR, attendanceR] = await Promise.allSettled([
     withTimeout(window.storage.get('schools', true), LOAD_TIMEOUT_MS),
     withTimeout(window.storage.get('students', true), LOAD_TIMEOUT_MS),
     withTimeout(window.storage.get('entries', true), LOAD_TIMEOUT_MS),
@@ -1422,6 +1475,7 @@ async function loadAll(){
     withTimeout(window.storage.get('auth', true), LOAD_TIMEOUT_MS),
     withTimeout(window.storage.get('catalog', true), LOAD_TIMEOUT_MS),
     withTimeout(window.storage.get('published', true), LOAD_TIMEOUT_MS),
+    withTimeout(window.storage.get('eventAttendance', true), LOAD_TIMEOUT_MS),
   ]);
 
   try{ SCHOOLS = (schoolsR.status==='fulfilled' && schoolsR.value) ? JSON.parse(schoolsR.value.value) : []; }catch(e){ SCHOOLS=[]; }
@@ -1440,6 +1494,7 @@ async function loadAll(){
   try{ SCORES = (scoresR.status==='fulfilled' && scoresR.value) ? JSON.parse(scoresR.value.value) : {}; }catch(e){ SCORES={}; }
   try{ SCHEDULE = (scheduleR.status==='fulfilled' && scheduleR.value) ? JSON.parse(scheduleR.value.value) : {}; }catch(e){ SCHEDULE={}; }
   try{ PUBLISHED = (publishedR.status==='fulfilled' && publishedR.value) ? JSON.parse(publishedR.value.value) : {}; }catch(e){ PUBLISHED={}; }
+  try{ EVENT_ATTENDANCE = (attendanceR.status==='fulfilled' && attendanceR.value) ? JSON.parse(attendanceR.value.value) : {}; }catch(e){ EVENT_ATTENDANCE={}; }
 
   try{
     if(configR.status==='fulfilled' && configR.value){
@@ -1462,7 +1517,7 @@ async function loadAll(){
     } else if(catalogR.status==='fulfilled'){ saveCatalog(); } // first run — persist built-in defaults
   }catch(e){ /* keep built-in defaults (Prathmik/SISU/BALA) */ }
 
-  if([schoolsR,studentsR,entriesR,scoresR,scheduleR,configR,authR,catalogR,publishedR].some(r=>r.status==='rejected')){
+  if([schoolsR,studentsR,entriesR,scoresR,scheduleR,configR,authR,catalogR,publishedR,attendanceR].some(r=>r.status==='rejected')){
     console.warn('Some data failed to load from Firebase (timeout or offline) — showing local/default data.');
   }
 }
@@ -1472,6 +1527,7 @@ async function saveEntries(){ try{ await window.storage.set('entries', JSON.stri
 async function saveScoresRemote(){ try{ await window.storage.set('scores', JSON.stringify(SCORES), true);}catch(e){toast('സേവ് പിഴവ്');} }
 async function saveSchedule(){ try{ await window.storage.set('schedule', JSON.stringify(SCHEDULE), true);}catch(e){toast('സേവ് പിഴവ്');} }
 async function savePublished(){ try{ await window.storage.set('published', JSON.stringify(PUBLISHED), true);}catch(e){toast('സേവ് പിഴവ്');} }
+async function saveEventAttendance(){ try{ await window.storage.set('eventAttendance', JSON.stringify(EVENT_ATTENDANCE), true);}catch(e){toast('സേവ് പിഴവ്');} }
 async function saveAuth(){ try{ await window.storage.set('auth', JSON.stringify(AUTH), true);}catch(e){toast('സേവ് പിഴവ്');} }
 async function saveConfig(){ try{ await window.storage.set('config', JSON.stringify(CONFIG), true);}catch(e){toast('സേവ് പിഴവ്');} }
 async function saveCatalog(){ try{ await window.storage.set('catalog', JSON.stringify({cats:CATS, items:ITEMS}), true);}catch(e){toast('സേവ് പിഴവ്');} }
@@ -1544,6 +1600,7 @@ function applyRoleUI(){
     schools: role==='district',
     venues: role==='district',
     entries: role==='school',
+    registration: role==='school',
     scoring: role==='official' || role==='district',
     results:true,
     reports: role==='district',
@@ -1596,9 +1653,9 @@ async function deleteAllData(){
   if(text !== 'DELETE ALL'){ toast('"DELETE ALL" എന്ന് കൃത്യമായി ടൈപ്പ് ചെയ്യുക'); return; }
   if(!confirm('എല്ലാ സ്കൂളുകളും കുട്ടികളും എൻട്രികളും മാർക്കുകളും ഷെഡ്യൂളും എന്നേക്കുമായി ഇല്ലാതാകും. ഈ പ്രവർത്തി തിരിച്ചെടുക്കാൻ കഴിയില്ല. ഉറപ്പാണോ?')) return;
   try{
-    SCHOOLS = []; STUDENTS = []; ENTRIES = []; SCORES = {}; SCHEDULE = {}; PUBLISHED = {};
+    SCHOOLS = []; STUDENTS = []; ENTRIES = []; SCORES = {}; SCHEDULE = {}; PUBLISHED = {}; EVENT_ATTENDANCE = {};
     CONFIG.regCounter = 0; CONFIG.schoolCounters = {}; CONFIG.registrationClosed = false;
-    await Promise.all([saveSchools(), saveStudents(), saveEntries(), saveScoresRemote(), saveSchedule(), saveConfig(), savePublished()]);
+    await Promise.all([saveSchools(), saveStudents(), saveEntries(), saveScoresRemote(), saveSchedule(), saveConfig(), savePublished(), saveEventAttendance()]);
     document.getElementById('deleteConfirmPass').value='';
     document.getElementById('deleteConfirmText').value='';
     resetCategorySelectCaches();
@@ -1719,6 +1776,7 @@ document.getElementById('tabnav').addEventListener('click', e=>{
   if(btn.dataset.tab==='schools') renderSchools();
   if(btn.dataset.tab==='venues') { renderVenuesTable(); populateScheduleVenueSelect(); }
   if(btn.dataset.tab==='entries') renderEntries();
+  if(btn.dataset.tab==='registration') renderSchoolAttendanceRegistration();
   if(btn.dataset.tab==='scoring') renderScoringItemList();
   if(btn.dataset.tab==='results') { renderResultsItemList(); renderChampionship(); renderCategoryScoreboards(); }
   if(btn.dataset.tab==='reports') renderReportsTab();
@@ -1949,6 +2007,7 @@ async function addSchool(){
   try{
     await saveSchools();
     await saveAuth();
+    await saveEventAttendance();
   } finally { resumeLiveSync(); }
   ['schoolName','schoolCode','schoolPlace','schoolContactPerson','schoolContactNumber','schoolUsername','schoolPassword'].forEach(id=>document.getElementById(id).value='');
   toast('സ്കൂൾ ചേർത്തു & ലോഗിൻ നൽകി ✓');
@@ -1958,6 +2017,7 @@ async function addSchool(){
 async function removeSchool(id){
   SCHOOLS = SCHOOLS.filter(s=>s.id!==id);
   delete AUTH.schoolAccounts[id];
+  delete EVENT_ATTENDANCE[id];
   suspendLiveSync();
   try{
     await saveSchools();
@@ -2988,12 +3048,14 @@ async function saveScores(){
    ============================================================ */
 function populateResultItemSelect(){
   const sel = document.getElementById('resultItemSelect');
-  const itemsWithEntries = ITEMS.filter(i=>ENTRIES.some(e=>e.itemCode===i.code));
+  const ownSchool = CURRENT_USER && CURRENT_USER.role==='school' ? CURRENT_USER.schoolId : null;
+  const itemsWithEntries = ITEMS.filter(i=>ENTRIES.some(e=>e.itemCode===i.code && (!ownSchool || e.schoolId===ownSchool)));
   sel.innerHTML = itemsWithEntries.map(i=>`<option value="${i.code}">${itemLabel(i)}</option>`).join('') || `<option value="">എൻട്രികളില്ല</option>`;
 }
 function renderResultsItemList(){
   populateResultItemSelect();
   renderResultTable();
+  const b=document.getElementById('schoolResultPdfAction'); if(b) b.style.display=(CURRENT_USER && CURRENT_USER.role==='school')?'block':'none';
 }
 document.getElementById('resultItemSelect').addEventListener('change', renderResultTable);
 
@@ -3064,8 +3126,9 @@ function computeResult(code){
 function renderResultTable(){
   const code = parseInt(document.getElementById('resultItemSelect').value);
   if(!code){ document.getElementById('resultBox').innerHTML = `<div class="empty">ഇനം തിരഞ്ഞെടുക്കുക</div>`; return; }
-  const list = computeResult(code);
+  let list = computeResult(code);
   const item = ITEMS.find(i=>i.code===code);
+  if(CURRENT_USER && CURRENT_USER.role==='school') list = list.filter(r=>r.schoolId===CURRENT_USER.schoolId);
   const group = isGroupItem(item);
   let html = `<div class="table-wrap"><table><thead><tr><th>റാങ്ക്</th>${group?'':'<th>ചെസ്റ്റ്#</th><th>പേര്</th>'}<th>സ്കൂൾ</th><th>%</th><th>ഗ്രേഡ്</th><th>പോയിന്റ്</th></tr></thead><tbody>`;
   if(!list.length){ html += `<tr><td colspan="${group?5:7}" class="empty">ഫലങ്ങളില്ല</td></tr>`; }
@@ -3094,14 +3157,15 @@ function renderChampionship(){
     if(!has) return;
     const results = computeResult(i.code);
     results.forEach(r=>{
-      if(!totals[r.schoolId]) totals[r.schoolId] = {name:r.schoolName, points:0, A:0,B:0,C:0};
+      if(!totals[r.schoolId]) totals[r.schoolId] = {schoolId:r.schoolId, name:r.schoolName, points:0, A:0,B:0,C:0};
       totals[r.schoolId].points += r.points;
       if(r.grade==='A') totals[r.schoolId].A++;
       if(r.grade==='B') totals[r.schoolId].B++;
       if(r.grade==='C') totals[r.schoolId].C++;
     });
   });
-  const arr = Object.values(totals).sort((a,b)=>b.points-a.points);
+  let arr = Object.values(totals).sort((a,b)=>b.points-a.points);
+  if(CURRENT_USER && CURRENT_USER.role==='school') arr = arr.filter(s=>s.schoolId===CURRENT_USER.schoolId);
   document.getElementById('championTbody').innerHTML = arr.map((s,idx)=>`
     <tr class="${idx===0?'rank-1':''}">
       <td>${ordinal(idx+1)}</td><td class="malayalam">${s.name}</td><td><b>${s.points}</b></td><td>${s.A}</td><td>${s.B}</td><td>${s.C}</td>
@@ -3117,14 +3181,15 @@ function renderCategoryScoreboards(){
     ITEMS.filter(i=>i.cat===cat).forEach(i=>{
       if(!ENTRIES.some(e=>e.itemCode===i.code)) return;
       computeResult(i.code).forEach(r=>{
-        if(!totals[r.schoolId]) totals[r.schoolId] = {name:r.schoolName, points:0, A:0,B:0,C:0};
+        if(!totals[r.schoolId]) totals[r.schoolId] = {schoolId:r.schoolId, name:r.schoolName, points:0, A:0,B:0,C:0};
         totals[r.schoolId].points += r.points;
         if(r.grade==='A') totals[r.schoolId].A++;
         if(r.grade==='B') totals[r.schoolId].B++;
         if(r.grade==='C') totals[r.schoolId].C++;
       });
     });
-    const arr = Object.values(totals).sort((a,b)=>b.points-a.points);
+    let arr = Object.values(totals).sort((a,b)=>b.points-a.points);
+    if(CURRENT_USER && CURRENT_USER.role==='school') arr = arr.filter(s=>s.schoolId===CURRENT_USER.schoolId);
     html += `<h3 class="section-head malayalam" style="margin-top:16px;">${CATS[cat].name} (${cat})</h3>
       <div class="table-wrap">
         <table>
@@ -3149,6 +3214,86 @@ function downloadAOAExcel(aoa, filename, sheetName){
     XLSX.utils.book_append_sheet(wb, ws, sheetName||'Sheet1');
     XLSX.writeFile(wb, filename);
   }catch(e){ toast('Excel നിർമ്മാണം പരാജയപ്പെട്ടു'); }
+}
+
+/* ---- Event-day attendance registration (school login) ---- */
+function attendanceNumber(id){
+  const el = document.getElementById(id);
+  const n = el ? parseInt(el.value,10) : 0;
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+function updateAttendanceTotal(){
+  const total = attendanceNumber('attStudents') + attendanceNumber('attStaff') + attendanceNumber('attCommittee') + attendanceNumber('attParents') + attendanceNumber('attOthers');
+  const el = document.getElementById('attTotal'); if(el) el.value = total;
+}
+function renderSchoolAttendanceRegistration(){
+  if(!CURRENT_USER || CURRENT_USER.role!=='school') return;
+  const rec = EVENT_ATTENDANCE[CURRENT_USER.schoolId] || {};
+  ['students','staff','committee','parents','others'].forEach(k=>{
+    const el=document.getElementById('att'+k.charAt(0).toUpperCase()+k.slice(1));
+    if(el) el.value = Number(rec[k]||0);
+  });
+  updateAttendanceTotal();
+  const note=document.getElementById('attSavedNote');
+  if(note) note.textContent = rec.updatedAt ? ('അവസാനം സേവ് ചെയ്തത്: '+rec.updatedAt) : '';
+  ['attStudents','attStaff','attCommittee','attParents','attOthers'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el && !el.dataset.bound){ el.addEventListener('input', updateAttendanceTotal); el.dataset.bound='1'; }
+  });
+}
+async function saveSchoolAttendanceRegistration(){
+  if(!CURRENT_USER || CURRENT_USER.role!=='school'){ toast('സ്കൂൾ ലോഗിൻ ആവശ്യമാണ്'); return; }
+  const students=attendanceNumber('attStudents'), staff=attendanceNumber('attStaff'), committee=attendanceNumber('attCommittee'), parents=attendanceNumber('attParents'), others=attendanceNumber('attOthers');
+  EVENT_ATTENDANCE[CURRENT_USER.schoolId] = {schoolId:CURRENT_USER.schoolId, students, staff, committee, parents, others, total:students+staff+committee+parents+others, updatedAt:new Date().toLocaleString('en-IN')};
+  await saveEventAttendance();
+  renderSchoolAttendanceRegistration();
+  toast('പങ്കെടുക്കുന്നവരുടെ രജിസ്ട്രേഷൻ സേവ് ചെയ്തു ✓');
+}
+function participationConsolidatedData(){
+  return SCHOOLS.map(s=>{
+    const r=EVENT_ATTENDANCE[s.id]||{};
+    return {id:s.id, code:s.code||'', name:s.name||'', students:+(r.students||0), staff:+(r.staff||0), committee:+(r.committee||0), parents:+(r.parents||0), others:+(r.others||0), total:+(r.total||0)};
+  });
+}
+function renderParticipationConsolidatedReport(){
+  const box=document.getElementById('participationConsolidatedBox'); if(!box) return;
+  const data=participationConsolidatedData();
+  const totals=data.reduce((a,d)=>{ a.students+=d.students;a.staff+=d.staff;a.committee+=d.committee;a.parents+=d.parents;a.others+=d.others;a.total+=d.total;return a;},{students:0,staff:0,committee:0,parents:0,others:0,total:0});
+  box.innerHTML=`<div class="table-wrap"><table id="participationConsolidatedTable"><thead><tr><th>കോഡ്</th><th class="malayalam">വിദ്യാലയം</th><th class="malayalam">വിദ്യാർത്ഥികൾ</th><th class="malayalam">അധ്യാപകർ & അനധ്യാപകർ</th><th class="malayalam">വിദ്യാലയ സമിതി</th><th class="malayalam">രക്ഷിതാക്കൾ</th><th class="malayalam">മറ്റുള്ളവർ</th><th class="malayalam">ടോട്ടൽ</th></tr></thead><tbody>${data.map(d=>`<tr><td>${d.code}</td><td class="malayalam">${d.name}</td><td>${d.students}</td><td>${d.staff}</td><td>${d.committee}</td><td>${d.parents}</td><td>${d.others}</td><td><b>${d.total}</b></td></tr>`).join('')||`<tr><td colspan="8" class="empty">ഡാറ്റ ലഭ്യമല്ല</td></tr>`}</tbody><tfoot><tr style="font-weight:800;background:#f3ecff;"><td colspan="2" class="malayalam">ആകെ</td><td>${totals.students}</td><td>${totals.staff}</td><td>${totals.committee}</td><td>${totals.parents}</td><td>${totals.others}</td><td>${totals.total}</td></tr></tfoot></table></div>`;
+}
+function downloadParticipationConsolidatedPDF(){
+  const table=document.getElementById('participationConsolidatedTable');
+  if(!table){toast('റിപ്പോർട്ട് ലഭ്യമല്ല');return;}
+  const html=`<h2 style="font-family:'Noto Sans Malayalam',sans-serif;color:#0d4d47;margin:0 0 6px;">ഭാരതീയ വിദ്യാനികേതൻ കൊല്ലം — കലാമൃതം 2026-27</h2><h3 style="font-family:'Noto Sans Malayalam',sans-serif;margin:0 0 12px;">കലാമേള ദിവസം പങ്കെടുക്കുന്നവരുടെ കൺസോളിഡേറ്റഡ് രജിസ്ട്രേഷൻ</h3>${table.outerHTML}`;
+  const {overlay,inner}=openCaptureSurface(html,1000); toast('Consolidated PDF തയ്യാറാക്കുന്നു...');
+  html2pdf().set({margin:8,filename:'kalammrutham-event-day-registration-consolidated.pdf',html2canvas:{scale:2,scrollX:0,scrollY:0,useCORS:true},jsPDF:{unit:'mm',format:'a4',orientation:'landscape'}}).from(inner).save().then(()=>toast('Consolidated PDF ഡൗൺലോഡ് ചെയ്തു ✓')).catch(()=>toast('PDF നിർമ്മാണം പരാജയപ്പെട്ടു')).finally(()=>closeCaptureSurface(overlay));
+}
+function downloadParticipationConsolidatedExcel(){
+  const data=participationConsolidatedData();
+  const totals=data.reduce((a,d)=>{a.students+=d.students;a.staff+=d.staff;a.committee+=d.committee;a.parents+=d.parents;a.others+=d.others;a.total+=d.total;return a;},{students:0,staff:0,committee:0,parents:0,others:0,total:0});
+  const aoa=[['കോഡ്','വിദ്യാലയം','വിദ്യാർത്ഥികൾ','അധ്യാപകർ & അനധ്യാപകർ','വിദ്യാലയ സമിതി','രക്ഷിതാക്കൾ','മറ്റുള്ളവർ','ടോട്ടൽ'],...data.map(d=>[d.code,d.name,d.students,d.staff,d.committee,d.parents,d.others,d.total]),['ആകെ','',totals.students,totals.staff,totals.committee,totals.parents,totals.others,totals.total]];
+  downloadAOAExcel(aoa,'kalammrutham-event-day-registration-consolidated.xlsx','Consolidated');
+}
+
+/* ---- School result PDF ---- */
+function schoolResultPDFData(schoolId){
+  const school=SCHOOLS.find(s=>s.id===schoolId); if(!school) return null;
+  const rows=[];
+  ITEMS.forEach(item=>{
+    if(!ENTRIES.some(e=>e.itemCode===item.code && e.schoolId===schoolId)) return;
+    const results=computeResult(item.code).filter(r=>r.schoolId===schoolId && r.avg!==null);
+    results.forEach(r=>rows.push({code:item.code,item:item.name,cat:item.cat,rank:r.placePoints? (r.placePoints===5?1:r.placePoints===3?2:r.placePoints===1?3:''):'',name:r.name||school.name,avg:r.avg,grade:r.grade||'-',points:r.points||0}));
+  });
+  return {school,rows};
+}
+function downloadSchoolResultsPDF(){
+  if(!CURRENT_USER || CURRENT_USER.role!=='school'){toast('സ്കൂൾ ലോഗിൻ ആവശ്യമാണ്');return;}
+  const data=schoolResultPDFData(CURRENT_USER.schoolId); if(!data){toast('സ്കൂൾ കണ്ടെത്താനായില്ല');return;}
+  const rows=data.rows;
+  const body=rows.map(r=>`<tr><td>${r.code}</td><td>${r.item}</td><td>${r.cat}</td><td>${r.rank||'-'}</td><td>${r.avg.toFixed(1)}</td><td>${r.grade}</td><td>${r.points}</td></tr>`).join('')||`<tr><td colspan="7">പ്രസിദ്ധീകരിച്ച ഫലം ലഭ്യമല്ല</td></tr>`;
+  const html=`<h2 style="font-family:'Noto Sans Malayalam',sans-serif;margin:0;">ഭാരതീയ വിദ്യാനികേതൻ കൊല്ലം — കലാമൃതം 2026-27</h2><h3 style="font-family:'Noto Sans Malayalam',sans-serif;margin:5px 0 12px;">${data.school.name} (${data.school.code}) — ഫല റിപ്പോർട്ട്</h3><table style="width:100%;border-collapse:collapse;font-family:'Noto Sans Malayalam',sans-serif;font-size:12px;"><thead><tr><th style="border:1px solid #333;padding:5px;">കോഡ്</th><th style="border:1px solid #333;padding:5px;">ഇനം</th><th style="border:1px solid #333;padding:5px;">കാറ്റ.</th><th style="border:1px solid #333;padding:5px;">റാങ്ക്</th><th style="border:1px solid #333;padding:5px;">%</th><th style="border:1px solid #333;padding:5px;">ഗ്രേഡ്</th><th style="border:1px solid #333;padding:5px;">പോയിന്റ്</th></tr></thead><tbody>${body}</tbody></table>`;
+  const {overlay,inner}=openCaptureSurface(html,900); toast('സ്കൂൾ റിസൾട്ട് PDF തയ്യാറാക്കുന്നു...');
+  html2pdf().set({margin:8,filename:`${data.school.code}-results-kalammrutham-2026-27.pdf`,html2canvas:{scale:2,scrollX:0,scrollY:0,useCORS:true},jsPDF:{unit:'mm',format:'a4',orientation:'landscape'}}).from(inner).save().then(()=>toast('സ്കൂൾ റിസൾട്ട് PDF ഡൗൺലോഡ് ചെയ്തു ✓')).catch(()=>toast('PDF നിർമ്മാണം പരാജയപ്പെട്ടു')).finally(()=>closeCaptureSurface(overlay));
 }
 
 /* ---- School-wise registration report ---- */
@@ -3237,7 +3382,7 @@ function categoryScoreboardData(cat){
   ITEMS.filter(i=>i.cat===cat).forEach(i=>{
     if(!ENTRIES.some(e=>e.itemCode===i.code)) return;
     computeResult(i.code).forEach(r=>{
-      if(!totals[r.schoolId]) totals[r.schoolId] = {name:r.schoolName, points:0, A:0,B:0,C:0};
+      if(!totals[r.schoolId]) totals[r.schoolId] = {schoolId:r.schoolId, name:r.schoolName, points:0, A:0,B:0,C:0};
       totals[r.schoolId].points += r.points;
       if(r.grade==='A') totals[r.schoolId].A++;
       if(r.grade==='B') totals[r.schoolId].B++;
@@ -3505,6 +3650,7 @@ function renderReportsTab(){
   populateIdCardSchoolSelect();
   pdfPopulateFilters();
   renderSchoolWiseReport();
+  renderParticipationConsolidatedReport();
   renderItemWiseReport();
   renderVenueWiseReport();
   renderCatWiseReport();
