@@ -833,6 +833,7 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
       <div class="note">ഓരോ വിധികർത്താവും 100 മാർക്കിൽ സ്കോർ നൽകുക (എല്ലാ വിധികർത്താക്കളുടെയും ശരാശരി കണക്കാക്കി ഗ്രേഡ് നിർണ്ണയിക്കും: A ≥80%, B 60&ndash;79%, C 40&ndash;59%).</div>
       <div class="note malayalam">📌 നീതിപൂർവമായ മൂല്യനിർണ്ണയത്തിനായി കുട്ടിയുടെ പേരും സ്കൂളും ഇവിടെ കാണിക്കുന്നില്ല — രജി. നമ്പറും ചെസ്റ്റ് നമ്പറും മാത്രം.</div>
       <div id="rubricBox" class="criteria-list"></div>
+      <div id="publishLockBox" style="margin-top:8px;"></div>
     </div>
 
     <div class="card">
@@ -842,7 +843,7 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
           <tbody id="scoringTbody"></tbody>
         </table>
       </div>
-      <div style="margin-top:10px;"><button class="btn secondary" onclick="saveScores()">💾 മാർക്ക് സേവ് ചെയ്യുക</button></div>
+      <div style="margin-top:10px;"><button id="saveScoresBtn" class="btn secondary malayalam" onclick="saveScores()">💾 മാർക്ക് സേവ് ചെയ്യുക</button></div>
     </div>
   </section>
 
@@ -903,6 +904,7 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
         <button class="btn small malayalam" onclick="downloadCallSheetPDF()">📄 എല്ലാ ഇവന്റുകളും – കോൾ ഷീറ്റ് PDF</button>
         <button class="btn small malayalam" onclick="downloadScoreSheetPDF()">📊 എല്ലാ ഇവന്റുകളും – സ്കോർ ഷീറ്റ് PDF</button>
         <button class="btn small malayalam" onclick="downloadMarkSheetPDF()">📝 എല്ലാ ഇവന്റുകളും – മാർക്ക് ഷീറ്റ് PDF</button>
+        <button class="btn small malayalam" onclick="downloadTabulationSheetPDF()">📋 എല്ലാ ഇവന്റുകളും – ടാബുലേഷൻ ഷീറ്റ് PDF</button>
         <button class="btn small secondary malayalam" onclick="downloadAllReportsZip()">📦 എല്ലാ റിപ്പോർട്ടും ഡൗൺലോഡ് (ZIP)</button>
         <button class="btn small ghost malayalam" onclick="generateAllPDFs()">⚡ Generate All PDFs</button>
       </div>
@@ -912,6 +914,7 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
           <option value="call">കോൾ ഷീറ്റ്</option>
           <option value="score">സ്കോർ ഷീറ്റ്</option>
           <option value="mark">മാർക്ക് ഷീറ്റ്</option>
+          <option value="tab">ടാബുലേഷൻ ഷീറ്റ്</option>
         </select>
         <button class="btn small ghost malayalam" onclick="openPrintPreview()">👁️ പ്രിന്റ് പ്രിവ്യൂ</button>
       </div>
@@ -1267,6 +1270,7 @@ let STUDENTS = []; // {id, regNo, name, schoolId, schoolName}
 let ENTRIES = [];
 let SCORES = {}; // entryId -> {j1,j2,j3}
 let SCHEDULE = {}; // itemCode -> {venue, date, time}
+let PUBLISHED = {}; // itemCode -> true once an official has saved marks (locked; district can unlock)
 let AUTH = { districtPassword:'district2026', schoolAccounts:{}, officials:[] };
 // schoolAccounts: { [schoolId]: {username, password} }
 // officials: [{id, name, username, password}]
@@ -1373,6 +1377,15 @@ function scheduleLiveRerender(key){
     if(CURRENT_USER){
       renderHome(); renderItems(); renderSchools(); renderEntries();
       renderUsersTab(); renderCategoryScoreboards();
+      // These two panels build their tables once when the tab is opened rather
+      // than on every render call, so a remote change (e.g. a school removing a
+      // registered child) while the panel is already open left its tables
+      // showing stale names until the user manually re-clicked the tab. Refresh
+      // them here too, but only when actually visible, to avoid wasted work.
+      const resultsPanel = document.getElementById('panel-results');
+      if(resultsPanel && resultsPanel.classList.contains('active')){ renderResultsItemList(); renderChampionship(); renderResultTable(); }
+      const reportsPanel = document.getElementById('panel-reports');
+      if(reportsPanel && reportsPanel.classList.contains('active')) renderReportsTab();
     }
   }, 300); // debounce so several fields saved together only cause one refresh
 }
@@ -1396,7 +1409,7 @@ function withTimeout(promise, ms){
 async function loadAll(){
   // Run every fetch in parallel (instead of one-after-another) so a single slow
   // key can't delay — or with the timeout above, block — everything else.
-  const [schoolsR, studentsR, entriesR, scoresR, scheduleR, configR, authR, catalogR] = await Promise.allSettled([
+  const [schoolsR, studentsR, entriesR, scoresR, scheduleR, configR, authR, catalogR, publishedR] = await Promise.allSettled([
     withTimeout(window.storage.get('schools', true), LOAD_TIMEOUT_MS),
     withTimeout(window.storage.get('students', true), LOAD_TIMEOUT_MS),
     withTimeout(window.storage.get('entries', true), LOAD_TIMEOUT_MS),
@@ -1405,13 +1418,25 @@ async function loadAll(){
     withTimeout(window.storage.get('config', true), LOAD_TIMEOUT_MS),
     withTimeout(window.storage.get('auth', true), LOAD_TIMEOUT_MS),
     withTimeout(window.storage.get('catalog', true), LOAD_TIMEOUT_MS),
+    withTimeout(window.storage.get('published', true), LOAD_TIMEOUT_MS),
   ]);
 
   try{ SCHOOLS = (schoolsR.status==='fulfilled' && schoolsR.value) ? JSON.parse(schoolsR.value.value) : []; }catch(e){ SCHOOLS=[]; }
   try{ STUDENTS = (studentsR.status==='fulfilled' && studentsR.value) ? JSON.parse(studentsR.value.value) : []; }catch(e){ STUDENTS=[]; }
   try{ ENTRIES = (entriesR.status==='fulfilled' && entriesR.value) ? JSON.parse(entriesR.value.value) : []; }catch(e){ ENTRIES=[]; }
+  // Keep the registration list consistent with the student master list.
+  // A previously deleted student must never leave an orphan entry visible.
+  if(Array.isArray(ENTRIES) && Array.isArray(STUDENTS)){
+    const validIds = new Set(STUDENTS.map(st=>String(st.id||'')));
+    const validRegNos = new Set(STUDENTS.map(st=>String(st.regNo||'')).filter(Boolean));
+    ENTRIES = ENTRIES.filter(e =>
+      (e.studentId && validIds.has(String(e.studentId))) ||
+      (!e.studentId && e.regNo && validRegNos.has(String(e.regNo)))
+    );
+  }
   try{ SCORES = (scoresR.status==='fulfilled' && scoresR.value) ? JSON.parse(scoresR.value.value) : {}; }catch(e){ SCORES={}; }
   try{ SCHEDULE = (scheduleR.status==='fulfilled' && scheduleR.value) ? JSON.parse(scheduleR.value.value) : {}; }catch(e){ SCHEDULE={}; }
+  try{ PUBLISHED = (publishedR.status==='fulfilled' && publishedR.value) ? JSON.parse(publishedR.value.value) : {}; }catch(e){ PUBLISHED={}; }
 
   try{
     if(configR.status==='fulfilled' && configR.value){
@@ -1434,7 +1459,7 @@ async function loadAll(){
     } else if(catalogR.status==='fulfilled'){ saveCatalog(); } // first run — persist built-in defaults
   }catch(e){ /* keep built-in defaults (Prathmik/SISU/BALA) */ }
 
-  if([schoolsR,studentsR,entriesR,scoresR,scheduleR,configR,authR,catalogR].some(r=>r.status==='rejected')){
+  if([schoolsR,studentsR,entriesR,scoresR,scheduleR,configR,authR,catalogR,publishedR].some(r=>r.status==='rejected')){
     console.warn('Some data failed to load from Firebase (timeout or offline) — showing local/default data.');
   }
 }
@@ -1443,6 +1468,7 @@ async function saveStudents(){ try{ await window.storage.set('students', JSON.st
 async function saveEntries(){ try{ await window.storage.set('entries', JSON.stringify(ENTRIES), true);}catch(e){toast('സേവ് പിഴവ്');} }
 async function saveScoresRemote(){ try{ await window.storage.set('scores', JSON.stringify(SCORES), true);}catch(e){toast('സേവ് പിഴവ്');} }
 async function saveSchedule(){ try{ await window.storage.set('schedule', JSON.stringify(SCHEDULE), true);}catch(e){toast('സേവ് പിഴവ്');} }
+async function savePublished(){ try{ await window.storage.set('published', JSON.stringify(PUBLISHED), true);}catch(e){toast('സേവ് പിഴവ്');} }
 async function saveAuth(){ try{ await window.storage.set('auth', JSON.stringify(AUTH), true);}catch(e){toast('സേവ് പിഴവ്');} }
 async function saveConfig(){ try{ await window.storage.set('config', JSON.stringify(CONFIG), true);}catch(e){toast('സേവ് പിഴവ്');} }
 async function saveCatalog(){ try{ await window.storage.set('catalog', JSON.stringify({cats:CATS, items:ITEMS}), true);}catch(e){toast('സേവ് പിഴവ്');} }
@@ -1515,7 +1541,7 @@ function applyRoleUI(){
     schools: role==='district',
     venues: role==='district',
     entries: role==='school',
-    scoring: role==='official',
+    scoring: role==='official' || role==='district',
     results:true,
     reports: role==='district',
     users: role==='district'
@@ -1567,9 +1593,9 @@ async function deleteAllData(){
   if(text !== 'DELETE ALL'){ toast('"DELETE ALL" എന്ന് കൃത്യമായി ടൈപ്പ് ചെയ്യുക'); return; }
   if(!confirm('എല്ലാ സ്കൂളുകളും കുട്ടികളും എൻട്രികളും മാർക്കുകളും ഷെഡ്യൂളും എന്നേക്കുമായി ഇല്ലാതാകും. ഈ പ്രവർത്തി തിരിച്ചെടുക്കാൻ കഴിയില്ല. ഉറപ്പാണോ?')) return;
   try{
-    SCHOOLS = []; STUDENTS = []; ENTRIES = []; SCORES = {}; SCHEDULE = {};
+    SCHOOLS = []; STUDENTS = []; ENTRIES = []; SCORES = {}; SCHEDULE = {}; PUBLISHED = {};
     CONFIG.regCounter = 0; CONFIG.schoolCounters = {}; CONFIG.registrationClosed = false;
-    await Promise.all([saveSchools(), saveStudents(), saveEntries(), saveScoresRemote(), saveSchedule(), saveConfig()]);
+    await Promise.all([saveSchools(), saveStudents(), saveEntries(), saveScoresRemote(), saveSchedule(), saveConfig(), savePublished()]);
     document.getElementById('deleteConfirmPass').value='';
     document.getElementById('deleteConfirmText').value='';
     resetCategorySelectCaches();
@@ -2440,9 +2466,16 @@ async function deleteStudentCompletely(){
   }
   if(!confirm(`"${student.name}" (${student.regNo}) എന്ന കുട്ടിയെയും അവരുടെ എല്ലാ ഇനങ്ങളും/മാർക്കുകളും പൂർണമായും ഒഴിവാക്കും. ഈ പ്രവർത്തി തിരിച്ചെടുക്കാൻ കഴിയില്ല. തുടരണോ?`)) return;
   const sid = EDIT_STUDENT_ID;
-  const removedEntryIds = ENTRIES.filter(e=>e.studentId===sid).map(e=>e.id);
-  STUDENTS = STUDENTS.filter(s=>s.id!==sid);
-  ENTRIES = ENTRIES.filter(e=>e.studentId!==sid);
+  const studentRegNo = student.regNo;
+  // Remove both modern entries (studentId) and older entries that only stored regNo.
+  const removedEntryIds = ENTRIES
+    .filter(e=>String(e.studentId||'')===String(sid) || String(e.regNo||'')===String(studentRegNo||''))
+    .map(e=>e.id);
+  STUDENTS = STUDENTS.filter(s=>String(s.id)!==String(sid));
+  ENTRIES = ENTRIES.filter(e =>
+    String(e.studentId||'')!==String(sid) &&
+    String(e.regNo||'')!==String(studentRegNo||'')
+  );
   removedEntryIds.forEach(id=>{ delete SCORES[id]; });
   suspendLiveSync();
   try{
@@ -2523,6 +2556,15 @@ function renderEntries(){
   const cat = document.getElementById('entryFilterCat').value;
   const itemCode = document.getElementById('entryFilterItem').value;
   let list = ENTRIES.slice();
+  // Never show an entry whose student has already been deleted.
+  // Resolve older entries that may have only a registration number.
+  list = list.map(e=>{
+    const student = STUDENTS.find(st =>
+      (e.studentId && String(st.id)===String(e.studentId)) ||
+      (!e.studentId && e.regNo && String(st.regNo)===String(e.regNo))
+    );
+    return student ? {...e, studentId:student.id, regNo:student.regNo, name:student.name, class:student.class, schoolName:student.schoolName, schoolId:student.schoolId} : null;
+  }).filter(Boolean);
   if(CURRENT_USER && CURRENT_USER.role==='school') list = list.filter(e=>e.schoolId===CURRENT_USER.schoolId);
   if(cat) list = list.filter(e=>e.cat===cat);
   if(itemCode) list = list.filter(e=>e.itemCode===parseInt(itemCode));
@@ -2808,6 +2850,15 @@ document.getElementById('scoreItemSelect').addEventListener('change', renderScor
 function judgeKeys(){
   return Array.from({length:CONFIG.judgeCount}, (_,i)=>'j'+(i+1));
 }
+function isScoringLocked(code){ return !!PUBLISHED[code]; }
+async function unlockItemScoring(code){
+  if(!CURRENT_USER || CURRENT_USER.role!=='district') return;
+  if(!confirm('ഈ ഇനത്തിന്റെ പ്രസിദ്ധീകരിച്ച മാർക്ക് അൺലോക്ക് ചെയ്ത് വീണ്ടും എഡിറ്റ് ചെയ്യാൻ അനുവദിക്കണോ?')) return;
+  delete PUBLISHED[code];
+  await savePublished();
+  toast('അൺലോക്ക് ചെയ്തു — ഇനി എഡിറ്റ് ചെയ്യാം ✓');
+  renderScoringTable();
+}
 function renderScoringTable(){
   const code = parseInt(document.getElementById('scoreItemSelect').value);
   const item = ITEMS.find(i=>i.code===code);
@@ -2816,6 +2867,22 @@ function renderScoringTable(){
     const r = findRubric(item.name);
     rubricBox.innerHTML = `<b>${r.title} — മൂല്യനിർണ്ണയ മാനദണ്ഡം (100 മാർക്ക്):</b><br>` + r.crit.join(' &nbsp;·&nbsp; ');
   } else { rubricBox.innerHTML=''; }
+
+  const role = CURRENT_USER && CURRENT_USER.role;
+  const locked = isScoringLocked(code);
+  const lockBox = document.getElementById('publishLockBox');
+  const saveBtn = document.getElementById('saveScoresBtn');
+  if(lockBox){
+    if(locked){
+      lockBox.innerHTML = `<div class="note malayalam" style="background:#fdecea;border-color:#f3c2bd;">
+        🔒 ഈ ഇനത്തിന്റെ മാർക്ക് സേവ് ചെയ്ത് പ്രസിദ്ധീകരിച്ചു (ലോക്ക് ചെയ്തിരിക്കുന്നു) — ഇനി എഡിറ്റ് ചെയ്യാൻ സാധിക്കില്ല.
+        ${role==='district'?`<div style="margin-top:6px;"><button class="btn small ghost malayalam" onclick="unlockItemScoring(${code})">🔓 അൺലോക്ക് ചെയ്ത് എഡിറ്റ് ചെയ്യുക</button></div>`:''}
+      </div>`;
+    } else {
+      lockBox.innerHTML = '';
+    }
+  }
+  if(saveBtn) saveBtn.style.display = locked ? 'none' : '';
 
   const keys = judgeKeys();
   const group = isGroupItem(item);
@@ -2851,16 +2918,18 @@ function renderScoringTable(){
     const pct = avg!==null? avg.toFixed(1) : '-';
     const grade = avg===null? '-' : (avg>=80?'A':avg>=60?'B':avg>=40?'C':'—');
     const gc = grade==='A'?'grade-A':grade==='B'?'grade-B':grade==='C'?'grade-C':'';
-    const judgeCells = keys.map(k=>`<td><input type="number" min="0" max="100" class="jscore" data-j="${k}" value="${s[k]||''}" style="width:60px;padding:5px;"></td>`).join('');
+    const disabledAttr = locked ? 'disabled' : '';
+    const judgeCells = keys.map(k=>`<td><input type="number" min="0" max="100" class="jscore" data-j="${k}" value="${s[k]||''}" style="width:60px;padding:5px;" ${disabledAttr}></td>`).join('');
     return `<tr data-key="${r.key}">
       <td class="malayalam">${r.label}</td>
-      <td><input type="text" class="chestInput" value="${r.chest||''}" placeholder="നമ്പർ നൽകുക" style="width:80px;padding:5px;"></td>
+      <td><input type="text" class="chestInput" value="${r.chest||''}" placeholder="നമ്പർ നൽകുക" style="width:80px;padding:5px;" ${disabledAttr}></td>
       ${judgeCells}
       <td>${pct}</td>
       <td class="${gc}">${grade}</td>
     </tr>`;
   }).join('') || `<tr><td colspan="${2+keys.length+2}" class="empty">ഈ ഇനത്തിൽ എൻട്രികൾ ഇല്ല</td></tr>`;
 
+  if(locked) return;
   document.querySelectorAll('#scoringTbody tr').forEach(tr=>{
     const row = rows.find(r=>r.key===tr.dataset.key);
     if(!row) return;
@@ -2893,12 +2962,22 @@ function renderScoringTable(){
   });
 }
 async function saveScores(){
+  const code = parseInt(document.getElementById('scoreItemSelect').value);
   suspendLiveSync();
   try{
     await saveScoresRemote();
     await saveEntries();
+    if(CURRENT_USER && CURRENT_USER.role==='official' && code){
+      PUBLISHED[code] = true;
+      await savePublished();
+    }
   } finally { resumeLiveSync(); }
-  toast('മാർക്കും ചെസ്റ്റ് നമ്പറും സേവ് ചെയ്തു ✓');
+  if(CURRENT_USER && CURRENT_USER.role==='official'){
+    toast('മാർക്കും ചെസ്റ്റ് നമ്പറും സേവ് ചെയ്ത് പ്രസിദ്ധീകരിച്ചു (ലോക്ക് ചെയ്തു) ✓');
+    renderScoringTable();
+  } else {
+    toast('മാർക്കും ചെസ്റ്റ് നമ്പറും സേവ് ചെയ്തു ✓');
+  }
 }
 
 /* ============================================================
@@ -3517,7 +3596,8 @@ function buildCallSheetSection(item){
     <td style="padding:5px 7px;border:1px solid #ddd;">${e.name}</td>
     <td style="padding:5px 7px;border:1px solid #ddd;">${e.class||'-'}</td>
     <td style="padding:5px 7px;border:1px solid #ddd;">${e.schoolName}</td>
-  </tr>`).join('') || `<tr><td colspan="5" style="padding:8px;text-align:center;">എൻട്രികളില്ല</td></tr>`;
+    <td style="padding:5px 7px;border:1px solid #ddd;"></td>
+  </tr>`).join('') || `<tr><td colspan="6" style="padding:8px;text-align:center;">എൻട്രികളില്ല</td></tr>`;
   return `<div style="page-break-after:always;padding:10px;">
     ${pdfOfficialHeader('കോൾ ഷീറ്റ് / CALL SHEET')}
     ${pdfEventMetaTable(item)}
@@ -3528,6 +3608,7 @@ function buildCallSheetSection(item){
         <th style="padding:6px 7px;border:1px solid #ddd;text-align:left;">പേര്</th>
         <th style="padding:6px 7px;border:1px solid #ddd;text-align:left;">ക്ലാസ്</th>
         <th style="padding:6px 7px;border:1px solid #ddd;text-align:left;">സ്കൂൾ</th>
+        <th style="padding:6px 7px;border:1px solid #ddd;text-align:left;">ഒപ്പ്</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>
@@ -3574,8 +3655,8 @@ function buildMarkSheetSection(item){
   const rows = Array.from({length:rowsCount},(_,idx)=>{
     const e = list[idx];
     return `<tr>
-      <td style="height:24px;padding:2px 5px;border:1px solid #111;text-align:center;">${idx+1}</td>
-      <td style="padding:2px 5px;border:1px solid #111;text-align:center;">${e?.regNo||''}</td>
+      <td style="height:19px;padding:2px 5px;border:1px solid #111;text-align:center;">${idx+1}</td>
+      <td style="padding:2px 5px;border:1px solid #111;text-align:center;"></td>
       <td style="padding:2px 5px;border:1px solid #111;text-align:center;">${e?.chest||''}</td>
       <td style="padding:2px 5px;border:1px solid #111;"></td>
       <td style="padding:2px 5px;border:1px solid #111;"></td>
@@ -3583,37 +3664,39 @@ function buildMarkSheetSection(item){
     </tr>`;
   }).join('');
 
-  const catName = CATS[item.cat]?.name || item.cat || '';
   const catEnglish = ({I:'SISU',II:'BALA',III:'KISHORE',IV:'THARUN',V:'COMMON'})[item.cat] || item.cat;
   const pageLabel = String(item.code).slice(-3) || item.code;
   const venue = s.venue || '-';
   const date = s.date || '-';
   const time = s.time || '-';
+  const rubric = findRubric(item.name);
 
-  return `<div style="page-break-after:always;padding:12px 10px 8px;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;box-sizing:border-box;">
+  return `<div style="padding:6px 10px 6px;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;box-sizing:border-box;">
     <div style="border-top:2px solid #111;border-bottom:2px solid #111;text-align:center;padding:3px 0 2px;">
-      <div style="font-family:'Times New Roman',serif;font-weight:800;font-size:15px;letter-spacing:.2px;">BHARATHEEYA VIDYANIKETHAN KOLLAM</div>
-      <div style="font-family:'Times New Roman',serif;font-weight:700;font-size:12px;">കലാമൃതം 2026-27</div>
-      <div style="font-family:'Times New Roman',serif;font-weight:800;font-size:14px;margin-top:2px;">MARK LIST</div>
+      <div style="font-family:'Times New Roman',serif;font-weight:800;font-size:13px;letter-spacing:.2px;">BHARATHEEYA VIDYANIKETHAN KOLLAM</div>
+      <div style="font-family:'Times New Roman',serif;font-weight:700;font-size:11px;">കലാമൃതം 2026-27</div>
+      <div style="font-family:'Times New Roman',serif;font-weight:800;font-size:12px;margin-top:2px;">MARK LIST</div>
     </div>
 
-    <table style="width:100%;border-collapse:collapse;font-family:'Times New Roman',serif;font-weight:700;font-size:11px;margin-top:2px;">
+    <table style="width:100%;border-collapse:collapse;font-family:'Times New Roman',serif;font-weight:700;font-size:10px;margin-top:2px;">
       <tr>
-        <td style="width:50%;border-top:1px solid #111;border-bottom:1px solid #111;padding:4px 4px;">${catEnglish.toUpperCase()} &nbsp;&nbsp; DATE : ${date}</td>
-        <td style="width:50%;border-top:1px solid #111;border-bottom:1px solid #111;padding:4px 4px;text-align:left;">TIME : ${time}</td>
+        <td style="width:50%;border-top:1px solid #111;border-bottom:1px solid #111;padding:3px 4px;">${catEnglish.toUpperCase()} &nbsp;&nbsp; DATE : ${date}</td>
+        <td style="width:50%;border-top:1px solid #111;border-bottom:1px solid #111;padding:3px 4px;text-align:left;">TIME : ${time}</td>
       </tr>
       <tr>
-        <td style="border-bottom:1px solid #111;padding:4px 4px;">${venue.toUpperCase()}</td>
-        <td style="border-bottom:1px solid #111;padding:4px 4px;">${item.name.toUpperCase()} (${item.code})</td>
+        <td style="border-bottom:1px solid #111;padding:3px 4px;">${venue.toUpperCase()}</td>
+        <td style="border-bottom:1px solid #111;padding:3px 4px;">${item.name.toUpperCase()} (${item.code})</td>
       </tr>
     </table>
 
-    <div style="text-align:right;font-family:'Times New Roman',serif;font-size:10px;margin:2px 2px 3px;">-${pageLabel}</div>
+    <div style="text-align:right;font-family:'Times New Roman',serif;font-size:9px;margin:2px 2px 2px;">-${pageLabel}</div>
 
-    <table style="width:100%;border-collapse:collapse;table-layout:fixed;font-family:'Times New Roman',serif;font-size:10.5px;">
+    <div style="font-size:9.5px;color:#333;margin:2px 2px 4px;font-family:Arial,Helvetica,sans-serif;"><b>${rubric.title} &mdash; മൂല്യനിർണയ ഉപാധികൾ (100):</b> ${rubric.crit.join(' &middot; ')}</div>
+
+    <table style="width:100%;border-collapse:collapse;table-layout:fixed;font-family:'Times New Roman',serif;font-size:10px;">
       <thead>
         <tr>
-          <th rowspan="2" style="width:9%;height:27px;padding:3px;border:1px solid #111;">SlNo</th>
+          <th rowspan="2" style="width:9%;height:22px;padding:3px;border:1px solid #111;">SlNo</th>
           <th rowspan="2" style="width:13%;padding:3px;border:1px solid #111;">Id No.</th>
           <th rowspan="2" style="width:14%;padding:3px;border:1px solid #111;">Chest No</th>
           <th colspan="2" style="width:36%;padding:3px;border:1px solid #111;">MARKS</th>
@@ -3627,12 +3710,129 @@ function buildMarkSheetSection(item){
       <tbody>${rows}</tbody>
     </table>
 
-    <div style="margin-top:34px;font-family:'Times New Roman',serif;font-size:11px;">Signature of Judge: ______________________________</div>
+    <div style="margin-top:16px;font-family:'Times New Roman',serif;font-size:10px;">Signature of Judge: ______________________________</div>
   </div>`;
 }
+
+function buildMarkSheetPage(items){
+  const sections = items.map(buildMarkSheetSection).join('<div style="border-top:1.5px dashed #999;margin:8px 0;"></div>');
+  return `<div style="page-break-after:always;">${sections}</div>`;
+}
+function buildTabulationSheetSection(item){
+  const s = SCHEDULE[item.code] || {};
+  const group = isGroupItem(item);
+  // Group/team items are one performance per school (see isGroupItem / computeResult),
+  // so the tabulation sheet should list one row per participating school too — not one
+  // row per child. Collapse ENTRIES down to the first entry for each distinct school,
+  // in first-appearance order, the same way a solo item lists one row per entry.
+  let list;
+  if(group){
+    const seenSchools = new Set(); const bySchool = [];
+    ENTRIES.filter(e=>e.itemCode===item.code).forEach(e=>{
+      if(seenSchools.has(e.schoolId)) return;
+      seenSchools.add(e.schoolId);
+      bySchool.push(e);
+    });
+    list = bySchool;
+  } else {
+    list = ENTRIES.filter(e=>e.itemCode===item.code);
+  }
+  const keys = judgeKeys();
+  const rowsCount = Math.max(7, list.length);
+  const catEnglish = ({I:'SISU',II:'BALA',III:'KISHORE',IV:'THARUN',V:'COMMON'})[item.cat] || item.cat;
+  const pageLabel = String(item.code).slice(-3) || item.code;
+  const venue = s.venue || '-';
+  const date = s.date || '-';
+  const time = s.time || '-';
+  const jHeaders = keys.map((k,idx)=>`<th style="padding:2px;border:1px solid #111;">${idx+1}</th>`).join('');
+  const rows = Array.from({length:rowsCount},(_,idx)=>{
+    const e = list[idx];
+    const jCells = keys.map(()=>`<td style="padding:2px 4px;border:1px solid #111;height:18px;"></td>`).join('');
+    // For group items one row represents one school. The school code belongs
+    // in the Id No. column; Chest No must remain blank.
+    const schoolCode = e ? (SCHOOLS.find(sc=>sc.id===e.schoolId)?.code || '') : '';
+    const idCell = group ? schoolCode : (e?.regNo||'');
+    const chestCell = group ? '' : (e?.chest||'');
+    return `<tr>
+      <td style="padding:2px 4px;border:1px solid #111;text-align:center;">${idx+1}</td>
+      <td style="padding:2px 4px;border:1px solid #111;text-align:center;">${idCell}</td>
+      <td style="padding:2px 4px;border:1px solid #111;text-align:center;">${chestCell}</td>
+      ${jCells}
+      <td style="padding:2px 4px;border:1px solid #111;"></td>
+      <td style="padding:2px 4px;border:1px solid #111;"></td>
+      <td style="padding:2px 4px;border:1px solid #111;"></td>
+      <td style="padding:2px 4px;border:1px solid #111;"></td>
+      <td style="padding:2px 4px;border:1px solid #111;"></td>
+      <td style="padding:2px 4px;border:1px solid #111;"></td>
+    </tr>`;
+  }).join('');
+
+  return `<div style="page-break-inside:avoid;break-inside:avoid;padding:7px 10px 6px;font-family:'Times New Roman',serif;color:#111;background:#fff;box-sizing:border-box;">
+    <div style="border:2px solid #111;text-align:center;padding:3px 0 2px;">
+      <div style="font-weight:800;font-size:14px;">BHARATHEEYA VIDYANIKETHAN KOLLAM</div>
+      <div style="font-weight:700;font-size:11px;">DISTRICT KALOLSAVAM KALĀMṚTAM 2026-27</div>
+      <div style="font-weight:800;font-size:13px;margin-top:2px;">TABULATION SHEET</div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-weight:700;font-size:11px;margin-top:2px;">
+      <tr>
+        <td style="width:50%;border-top:1px solid #111;border-bottom:1px solid #111;padding:3px 4px;">${catEnglish.toUpperCase()} &nbsp;&nbsp; DATE : ${date}</td>
+        <td style="width:50%;border-top:1px solid #111;border-bottom:1px solid #111;padding:3px 4px;">TIME : ${time}</td>
+      </tr>
+      <tr>
+        <td style="border-bottom:1px solid #111;padding:3px 4px;">STAGE: ${venue.toUpperCase()}</td>
+        <td style="border-bottom:1px solid #111;padding:3px 4px;">${item.name.toUpperCase()} [${item.code}]</td>
+      </tr>
+    </table>
+    <div style="text-align:right;font-size:9px;margin:2px 2px 3px;">-${pageLabel}</div>
+    <table style="width:100%;border-collapse:collapse;table-layout:fixed;font-size:10px;">
+      <thead>
+        <tr>
+          <th rowspan="2" style="width:7%;padding:3px;border:1px solid #111;">SlNo</th>
+          <th rowspan="2" style="width:11%;padding:3px;border:1px solid #111;">Id No.</th>
+          <th rowspan="2" style="width:11%;padding:3px;border:1px solid #111;">Chest No</th>
+          <th colspan="${keys.length}" style="padding:3px;border:1px solid #111;">MARKS</th>
+          <th rowspan="2" style="width:11%;padding:3px;border:1px solid #111;">TOTAL</th>
+          <th rowspan="2" style="width:8%;padding:3px;border:1px solid #111;">%</th>
+          <th rowspan="2" style="width:9%;padding:3px;border:1px solid #111;">GRADE</th>
+          <th rowspan="2" style="width:9%;padding:3px;border:1px solid #111;">POINTS</th>
+          <th colspan="2" style="padding:3px;border:1px solid #111;">RANK</th>
+        </tr>
+        <tr>
+          ${jHeaders}
+          <th style="padding:3px;border:1px solid #111;">In Figures</th>
+          <th style="padding:3px;border:1px solid #111;">In Words</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div style="margin-top:20px;font-size:10px;">Entered By: ______________________________</div>
+    <div style="margin-top:30px;display:flex;justify-content:space-between;font-size:10px;flex-wrap:wrap;gap:8px;">
+      <div>Signature of: <span style="display:inline-block;width:70px;"></span> Stage Manager</div>
+      ${keys.map((k,idx)=>`<div>Judge${idx+1}</div>`).join('')}
+    </div>
+  </div>`;
+}
+
 function buildPdfDocument(type, items){
   if(!items.length) return `<div style="padding:24px;text-align:center;">ഫിൽട്ടറുമായി പൊരുത്തപ്പെടുന്ന ഇനങ്ങളില്ല</div>`;
-  const builder = type==='call' ? buildCallSheetSection : type==='score' ? buildScoreSheetSection : buildMarkSheetSection;
+  if(type==='mark'){
+    const pages = [];
+    for(let i=0;i<items.length;i+=2){ pages.push(items.slice(i,i+2)); }
+    const htmls = pages.map(buildMarkSheetPage);
+    htmls[htmls.length-1] = htmls[htmls.length-1].replace('page-break-after:always;','');
+    return htmls.join('');
+  }
+  if(type==='tab'){
+    // Tabulation sheets: exactly 2 competitions per A4 page.
+    const pages = [];
+    for(let i=0;i<items.length;i+=2){
+      const pair = items.slice(i,i+2).map(buildTabulationSheetSection).join('<div style="border-top:1.5px dashed #999;margin:5px 0;"></div>');
+      pages.push(`<div style="page-break-after:always;break-after:page;box-sizing:border-box;width:100%;">${pair}</div>`);
+    }
+    if(pages.length) pages[pages.length-1] = pages[pages.length-1].replace('page-break-after:always;break-after:page;','');
+    return pages.join('');
+  }
+  const builder = type==='call' ? buildCallSheetSection : type==='score' ? buildScoreSheetSection : buildTabulationSheetSection;
   const htmls = items.map(builder);
   htmls[htmls.length-1] = htmls[htmls.length-1].replace('page-break-after:always;','');
   return htmls.join('');
@@ -3655,6 +3855,7 @@ function downloadPdfDocument(type, filenamePrefix){
 function downloadCallSheetPDF(){ downloadPdfDocument('call','all-events-call-sheet'); }
 function downloadScoreSheetPDF(){ downloadPdfDocument('score','all-events-score-sheet'); }
 function downloadMarkSheetPDF(){ downloadPdfDocument('mark','all-events-mark-sheet'); }
+function downloadTabulationSheetPDF(){ downloadPdfDocument('tab','all-events-tabulation-sheet'); }
 
 function openPrintPreview(){
   const type = document.getElementById('pdfPreviewType').value;
@@ -3686,7 +3887,7 @@ async function downloadAllReportsZip(){
   toast('ZIP തയ്യാറാക്കുന്നു...');
   try{
     const zip = new JSZip();
-    const types = [['call','call-sheet.pdf'],['score','score-sheet.pdf'],['mark','mark-sheet.pdf']];
+    const types = [['call','call-sheet.pdf'],['score','score-sheet.pdf'],['mark','mark-sheet.pdf'],['tab','tabulation-sheet.pdf']];
     for(const [type, fname] of types){
       const container = document.createElement('div');
       container.style.cssText = 'position:absolute;left:-9999px;top:0;background:#fff;width:' + (orientation==='landscape'?'950px':'700px') + ';';
@@ -3717,6 +3918,7 @@ async function generateAllPDFs(){
   await downloadPdfDocument('call','all-events-call-sheet');
   await downloadPdfDocument('score','all-events-score-sheet');
   await downloadPdfDocument('mark','all-events-mark-sheet');
+  await downloadPdfDocument('tab','all-events-tabulation-sheet');
   toast('എല്ലാ PDF-കളും തയ്യാറാക്കി ✓');
 }
 
