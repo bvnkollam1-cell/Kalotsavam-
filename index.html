@@ -1027,6 +1027,13 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
       <option value="10">10</option>
     </select>
 
+    <label class="malayalam" style="margin-top:14px;">ഫോട്ടോ (ഐഡി കാർഡിന്)</label>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+      <img id="editStudentPhotoPreview" src="" alt="" style="width:70px;height:88px;object-fit:cover;border:1px solid #ccc;border-radius:6px;background:#eee;display:none;">
+      <input type="file" id="editStudentPhoto" accept="image/*" style="flex:1;min-width:180px;">
+    </div>
+    <div class="note malayalam" style="margin-top:2px;">പുതിയ ഫോട്ടോ അപ്‌ലോഡ് ചെയ്താൽ മാത്രം അത് മാറും; ഒന്നും തിരഞ്ഞെടുത്തില്ലെങ്കിൽ നിലവിലെ ഫോട്ടോ അതേപടി തുടരും.</div>
+
     <label class="malayalam" style="margin-top:14px;">ഇനങ്ങൾ (ചേർക്കാനും നീക്കാനും ടിക്ക് ചെയ്യുക)</label>
     <div class="filters">
       <select id="editItemCat"></select>
@@ -1038,6 +1045,24 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
       <button class="btn" onclick="saveStudentEditModal()">സേവ് ചെയ്യുക</button>
       <button class="btn ghost" onclick="closeEditStudentModal()">റദ്ദാക്കുക</button>
       <button class="btn danger malayalam" style="margin-left:auto;" onclick="deleteStudentCompletely()">🗑️ കുട്ടിയെ പൂർണമായും ഒഴിവാക്കുക</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PHOTO CROP MODAL ============ -->
+<div class="modal-overlay" id="photoCropModal" style="display:none;">
+  <div class="modal-box card" style="max-width:360px;text-align:center;">
+    <h3 class="section-head malayalam" style="margin-top:0;">മുഖം സെലക്ട് ചെയ്യുക</h3>
+    <div class="note malayalam" style="margin-bottom:10px;">ബോക്സ് വലിച്ച് നീക്കുക, മഞ്ഞ ബട്ടൺ വലിച്ച് വലുപ്പം മാറ്റുക — മുഖം മാത്രം ഫ്രെയിമിനുള്ളിൽ വരുത്തുക</div>
+    <div id="cropStage" style="position:relative;margin:0 auto;background:#111;overflow:hidden;touch-action:none;user-select:none;">
+      <img id="cropImg" style="position:absolute;left:0;top:0;pointer-events:none;">
+      <div id="cropBox" style="position:absolute;border:2px solid #fbbf24;box-shadow:0 0 0 9999px rgba(0,0,0,.5);cursor:move;">
+        <div id="cropHandle" style="position:absolute;right:-9px;bottom:-9px;width:20px;height:20px;background:#fbbf24;border:2px solid #fff;border-radius:50%;cursor:nwse-resize;"></div>
+      </div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+      <button class="btn malayalam" onclick="confirmPhotoCrop()">✓ ക്രോപ്പ് ചെയ്യുക</button>
+      <button class="btn ghost malayalam" onclick="cancelPhotoCrop()">റദ്ദാക്കുക</button>
     </div>
   </div>
 </div>
@@ -2103,6 +2128,124 @@ function resizeImageToDataURL(file, maxW=220, maxH=280){
     reader.readAsDataURL(file);
   });
 }
+
+/* ============================================================
+   PHOTO FACE-CROP MODAL
+   Lets the user drag/resize a fixed-aspect box over the uploaded
+   photo so only the face area gets saved as the ID-card photo.
+   ============================================================ */
+let ENTRY_PHOTO_DATAURL = '';   // cropped photo for a brand-new student in the entry form
+let EDIT_PHOTO_DATAURL = null;  // cropped photo chosen while editing an existing student
+const PHOTO_OUT_W = 220, PHOTO_OUT_H = 280; // final ID-card photo size
+const PHOTO_ASPECT = PHOTO_OUT_W / PHOTO_OUT_H;
+let CROP = null; // {img, scale, dispW, dispH, box:{x,y,w,h}, onDone}
+
+function openPhotoCropModal(file, onDone){
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const maxW = Math.min(300, (window.innerWidth||340) - 70);
+      const maxH = 380;
+      let scale = Math.min(maxW/img.width, maxH/img.height);
+      if(!isFinite(scale) || scale<=0) scale = 1;
+      const dispW = Math.max(60, Math.round(img.width*scale));
+      const dispH = Math.max(60, Math.round(img.height*scale));
+      scale = dispW/img.width;
+
+      let boxH = Math.min(dispH, dispW/PHOTO_ASPECT) * 0.85;
+      let boxW = boxH * PHOTO_ASPECT;
+      if(boxW > dispW){ boxW = dispW*0.9; boxH = boxW/PHOTO_ASPECT; }
+      let boxX = (dispW - boxW)/2;
+      let boxY = Math.max(0, Math.min(dispH - boxH, dispH*0.06));
+
+      CROP = { img, scale, dispW, dispH, box:{x:boxX, y:boxY, w:boxW, h:boxH}, onDone: onDone || null };
+
+      const stage = document.getElementById('cropStage');
+      stage.style.width = dispW+'px';
+      stage.style.height = dispH+'px';
+      const cimg = document.getElementById('cropImg');
+      cimg.src = ev.target.result;
+      cimg.style.width = dispW+'px';
+      cimg.style.height = dispH+'px';
+      renderCropBox();
+      document.getElementById('photoCropModal').style.display = 'flex';
+    };
+    img.onerror = ()=>{ toast('ഫോട്ടോ ലോഡ് ചെയ്യുന്നതിൽ പിഴവ്'); if(onDone) onDone(null); };
+    img.src = ev.target.result;
+  };
+  reader.onerror = ()=>{ toast('ഫയൽ വായിക്കുന്നതിൽ പിഴവ്'); if(onDone) onDone(null); };
+  reader.readAsDataURL(file);
+}
+function renderCropBox(){
+  if(!CROP) return;
+  const el = document.getElementById('cropBox');
+  el.style.left = CROP.box.x+'px';
+  el.style.top = CROP.box.y+'px';
+  el.style.width = CROP.box.w+'px';
+  el.style.height = CROP.box.h+'px';
+}
+(function wireCropDragging(){
+  let mode = null; // 'move' | 'resize'
+  let start = null;
+  function pointFromEvent(e){
+    const p = e.touches && e.touches[0] ? e.touches[0] : e;
+    return { x:p.clientX, y:p.clientY };
+  }
+  function onDown(mode_, e){
+    if(!CROP) return;
+    mode = mode_;
+    const p = pointFromEvent(e);
+    start = { px:p.x, py:p.y, box:Object.assign({}, CROP.box) };
+    e.preventDefault(); e.stopPropagation();
+  }
+  function onMove(e){
+    if(!CROP || !mode) return;
+    const p = pointFromEvent(e);
+    const dx = p.x - start.px, dy = p.y - start.py;
+    if(mode==='move'){
+      let x = start.box.x + dx, y = start.box.y + dy;
+      x = Math.max(0, Math.min(CROP.dispW - CROP.box.w, x));
+      y = Math.max(0, Math.min(CROP.dispH - CROP.box.h, y));
+      CROP.box.x = x; CROP.box.y = y;
+    } else if(mode==='resize'){
+      let w = start.box.w + dx;
+      w = Math.max(40, Math.min(w, CROP.dispW - start.box.x));
+      let h = w / PHOTO_ASPECT;
+      if(start.box.y + h > CROP.dispH){ h = CROP.dispH - start.box.y; w = h*PHOTO_ASPECT; }
+      CROP.box.w = w; CROP.box.h = h;
+    }
+    renderCropBox();
+    e.preventDefault();
+  }
+  function onUp(){ mode = null; start = null; }
+  const box = document.getElementById('cropBox');
+  const handle = document.getElementById('cropHandle');
+  if(box) box.addEventListener('pointerdown', e=>{ if(e.target===handle) return; onDown('move', e); });
+  if(handle) handle.addEventListener('pointerdown', e=>onDown('resize', e));
+  document.addEventListener('pointermove', onMove);
+  document.addEventListener('pointerup', onUp);
+  document.addEventListener('pointercancel', onUp);
+})();
+function confirmPhotoCrop(){
+  if(!CROP) return;
+  const canvas = document.createElement('canvas');
+  canvas.width = PHOTO_OUT_W; canvas.height = PHOTO_OUT_H;
+  const sx = CROP.box.x / CROP.scale, sy = CROP.box.y / CROP.scale;
+  const sw = CROP.box.w / CROP.scale, sh = CROP.box.h / CROP.scale;
+  canvas.getContext('2d').drawImage(CROP.img, sx, sy, sw, sh, 0, 0, PHOTO_OUT_W, PHOTO_OUT_H);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+  const cb = CROP.onDone;
+  document.getElementById('photoCropModal').style.display = 'none';
+  CROP = null;
+  if(cb) cb(dataUrl);
+}
+function cancelPhotoCrop(){
+  const cb = CROP ? CROP.onDone : null;
+  document.getElementById('photoCropModal').style.display = 'none';
+  CROP = null;
+  if(cb) cb(null);
+}
 function isRegistrationLockedForCurrentUser(){
   return !!(CONFIG.registrationClosed && CURRENT_USER && CURRENT_USER.role==='school');
 }
@@ -2126,7 +2269,9 @@ async function addEntry(){
     if(!cls){ toast('ക്ലാസ് തിരഞ്ഞെടുക്കുക'); return; }
     let photo = '';
     const fileInput = document.getElementById('entryPhoto');
-    if(fileInput && fileInput.files && fileInput.files[0]){
+    if(ENTRY_PHOTO_DATAURL){
+      photo = ENTRY_PHOTO_DATAURL;
+    } else if(fileInput && fileInput.files && fileInput.files[0]){
       try{ photo = await resizeImageToDataURL(fileInput.files[0]); }
       catch(e){ toast('ഫോട്ടോ പ്രോസസ് ചെയ്യുന്നതിൽ പിഴവ് — ഫോട്ടോ ഇല്ലാതെ തുടരുന്നു'); }
     }
@@ -2194,6 +2339,7 @@ async function addEntry(){
   document.getElementById('entryName').value='';
   if(document.getElementById('entryClass')) document.getElementById('entryClass').value='';
   if(document.getElementById('entryPhoto')) document.getElementById('entryPhoto').value='';
+  ENTRY_PHOTO_DATAURL = '';
   document.querySelectorAll('#entryItemChecklist input.entchk:checked').forEach(c=>c.checked=false);
   populateEntryStudentSelect();
   const skipNote = skipped.length ? ` (പരിധി കവിഞ്ഞതിനാൽ ${skipped.length} ഇനം ചേർത്തില്ല)` : '';
@@ -2261,6 +2407,14 @@ function openEditStudentModal(studentId){
   document.getElementById('editStudentRegNoNote').innerHTML = `രജിസ്റ്റർ നമ്പർ: <b>${student.regNo}</b>`;
   document.getElementById('editStudentName').value = student.name || '';
   document.getElementById('editStudentClass').value = student.class || '';
+  EDIT_PHOTO_DATAURL = null;
+  const editPhotoInput = document.getElementById('editStudentPhoto');
+  if(editPhotoInput) editPhotoInput.value = '';
+  const editPhotoPreview = document.getElementById('editStudentPhotoPreview');
+  if(editPhotoPreview){
+    if(student.photo){ editPhotoPreview.src = student.photo; editPhotoPreview.style.display = 'inline-block'; }
+    else { editPhotoPreview.src=''; editPhotoPreview.style.display = 'none'; }
+  }
   document.getElementById('editItemCat').value = '';
   document.getElementById('editItemSearch').value = '';
   const box = document.getElementById('editItemChecklist');
@@ -2271,6 +2425,7 @@ function openEditStudentModal(studentId){
 function closeEditStudentModal(){
   document.getElementById('editStudentModal').style.display = 'none';
   EDIT_STUDENT_ID = null;
+  EDIT_PHOTO_DATAURL = null;
 }
 async function deleteStudentCompletely(){
   if(!EDIT_STUDENT_ID) return;
@@ -2316,6 +2471,7 @@ async function saveStudentEditModal(){
 
   student.name = name;
   student.class = cls;
+  if(EDIT_PHOTO_DATAURL){ student.photo = EDIT_PHOTO_DATAURL; }
 
   // Remove entries for items that were unticked.
   ENTRIES = ENTRIES.filter(e=> e.studentId!==EDIT_STUDENT_ID || checked.has(e.itemCode));
@@ -3657,6 +3813,28 @@ document.getElementById('publicEventSearch')?.addEventListener('keydown',e=>{if(
 document.getElementById('publicEventSearch')?.addEventListener('input',()=>populatePublicEventItemSelect());
 document.getElementById('publicEventCat')?.addEventListener('change',()=>{populatePublicEventItemSelect();renderPublicEventResults();});
 document.getElementById('publicEventItem')?.addEventListener('change',renderPublicEventResults);
+
+document.getElementById('entryPhoto')?.addEventListener('change', function(){
+  if(!this.files || !this.files[0]){ ENTRY_PHOTO_DATAURL=''; return; }
+  const file = this.files[0];
+  openPhotoCropModal(file, dataUrl=>{
+    if(dataUrl){ ENTRY_PHOTO_DATAURL = dataUrl; }
+    else { ENTRY_PHOTO_DATAURL = ''; this.value=''; }
+  });
+});
+document.getElementById('editStudentPhoto')?.addEventListener('change', function(){
+  if(!this.files || !this.files[0]) return;
+  const file = this.files[0];
+  openPhotoCropModal(file, dataUrl=>{
+    if(dataUrl){
+      EDIT_PHOTO_DATAURL = dataUrl;
+      const preview = document.getElementById('editStudentPhotoPreview');
+      if(preview){ preview.src = dataUrl; preview.style.display = 'inline-block'; }
+    } else {
+      this.value = '';
+    }
+  });
+});
 
 /* ============================================================
    INIT
