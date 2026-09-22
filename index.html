@@ -3737,7 +3737,9 @@ function buildTabulationSheetSection(item){
   } else {
     list = ENTRIES.filter(e=>e.itemCode===item.code);
   }
-  const keys = judgeKeys();
+  // Tabulation sheet always reserves 3 judge-mark columns (Judge 1, 2 and 3),
+  // independent of the currently selected scoring configuration.
+  const keys = ['j1','j2','j3'];
   const rowsCount = Math.max(7, list.length);
   const catEnglish = ({I:'SISU',II:'BALA',III:'KISHORE',IV:'THARUN',V:'COMMON'})[item.cat] || item.cat;
   const pageLabel = String(item.code).slice(-3) || item.code;
