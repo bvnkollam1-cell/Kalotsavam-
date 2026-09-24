@@ -3813,7 +3813,7 @@ function buildMarkSheetSection(item){
     </tr>`;
   }).join('');
 
-  const catEnglish = ({I:'SISU',II:'BALA',III:'KISHORE',IV:'THARUN',V:'COMMON'})[item.cat] || item.cat;
+  const catEnglish = ({I:'PRATHMIK',II:'SISU',III:'BALA',IV:'THARUN',V:'COMMON'})[item.cat] || item.cat;
   const pageLabel = String(item.code).slice(-3) || item.code;
   const venue = s.venue || '-';
   const date = s.date || '-';
@@ -3890,7 +3890,7 @@ function buildTabulationSheetSection(item){
   // independent of the currently selected scoring configuration.
   const keys = ['j1','j2','j3'];
   const rowsCount = Math.max(7, list.length);
-  const catEnglish = ({I:'SISU',II:'BALA',III:'KISHORE',IV:'THARUN',V:'COMMON'})[item.cat] || item.cat;
+  const catEnglish = ({I:'PRATHMIK',II:'SISU',III:'BALA',IV:'THARUN',V:'COMMON'})[item.cat] || item.cat;
   const pageLabel = String(item.code).slice(-3) || item.code;
   const venue = s.venue || '-';
   const date = s.date || '-';
@@ -4114,7 +4114,7 @@ function renderPublicScoreboard(){
   if(!slides||!dots) return;
   const cats=Object.keys(CATS);
   slides.innerHTML=cats.map((cat,idx)=>{
-    const arr=categoryScoreboardData(cat).slice(0,6);
+    const arr=categoryScoreboardData(cat);
     return `<div class="public-score-slide ${idx===publicScoreIndex?'active':''}" data-public-slide="${idx}">
       <div class="public-score-head"><span class="public-score-cat malayalam">${CATS[cat].name} (${cat})</span><span class="public-score-class">${CATS[cat].cls}</span></div>
       <div class="table-wrap"><table class="public-score-table"><thead><tr><th class="rank">റാങ്ക്</th><th class="malayalam">സ്കൂൾ</th><th class="pts">പോയിന്റ്</th><th>A</th><th>B</th><th>C</th></tr></thead><tbody>
