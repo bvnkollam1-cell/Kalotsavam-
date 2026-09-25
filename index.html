@@ -978,7 +978,7 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
         <option value="a3">A3 — ഒരു ഷീറ്റിൽ 8 കാർഡ്</option>
       </select>
       <div style="margin-top:10px;"><button class="btn malayalam" onclick="downloadIdCards()">🪪 ഐഡി കാർഡുകൾ PDF ആയി ഡൗൺലോഡ് ചെയ്യുക</button></div>
-      <div class="note malayalam">📌 ഓരോ കാർഡും A6 (105 × 148 മി.മീ) — A4 ഷീറ്റിൽ 4 എണ്ണം, A3 ഷീറ്റിൽ 8 എണ്ണം. പേര്, രജി. നമ്പർ, കാറ്റഗറി, സ്കൂൾ, ഫോട്ടോ, ഇനങ്ങൾ, വേദി, സമയം എന്നിവയും മുഴുവൻ വിവരങ്ങളുള്ള QR കോഡും ഉൾപ്പെടും.</div>
+      <div class="note malayalam">📌 ഫോട്ടോകൾ സാധാരണ പേജിൽ നിന്ന് ലോഡ് ചെയ്യില്ല. ഐഡി കാർഡ് PDF തയ്യാറാക്കുമ്പോൾ മാത്രം ആവശ്യമായ ഫോട്ടോകൾ Firebase-ൽ നിന്ന് എടുക്കും. ഓരോ കാർഡും A6 (105 × 148 മി.മീ) — A4 ഷീറ്റിൽ 4 എണ്ണം, A3 ഷീറ്റിൽ 8 എണ്ണം. പേര്, രജി. നമ്പർ, കാറ്റഗറി, സ്കൂൾ, ഫോട്ടോ, ഇനങ്ങൾ, വേദി, സമയം എന്നിവയും മുഴുവൻ വിവരങ്ങളുള്ള QR കോഡും ഉൾപ്പെടും.</div>
     </div>
 
     <h3 class="section-head malayalam">കലാമേള ദിവസം പങ്കെടുക്കുന്നവരുടെ കൺസോളിഡേറ്റഡ് രജിസ്ട്രേഷൻ</h3>
@@ -1487,6 +1487,11 @@ async function loadAll(){
 
   try{ SCHOOLS = (schoolsR.status==='fulfilled' && schoolsR.value) ? JSON.parse(schoolsR.value.value) : []; }catch(e){ SCHOOLS=[]; }
   try{ STUDENTS = (studentsR.status==='fulfilled' && studentsR.value) ? JSON.parse(studentsR.value.value) : []; }catch(e){ STUDENTS=[]; }
+
+  // One-time migration of old base64 photos out of the main students node.
+  // After this, normal loadAll() no longer downloads photo data.
+  await migrateLegacyStudentPhotos();
+
   try{ ENTRIES = (entriesR.status==='fulfilled' && entriesR.value) ? JSON.parse(entriesR.value.value) : []; }catch(e){ ENTRIES=[]; }
   // Keep the registration list consistent with the student master list.
   // A previously deleted student must never leave an orphan entry visible.
@@ -1529,7 +1534,85 @@ async function loadAll(){
   }
 }
 async function saveSchools(){ try{ await window.storage.set('schools', JSON.stringify(SCHOOLS), true);}catch(e){toast('സേവ് പിഴവ്');} }
-async function saveStudents(){ try{ await window.storage.set('students', JSON.stringify(STUDENTS), true);}catch(e){toast('സേവ് പിഴവ്');} }
+const STUDENT_PHOTO_KEY = id => `studentPhotos/${encodeURIComponent(String(id))}`;
+
+async function getStudentPhoto(studentId){
+  try{
+    const r = await window.storage.get(STUDENT_PHOTO_KEY(studentId), true);
+    return r && r.value ? r.value : '';
+  }catch(e){
+    console.warn('student photo load failed', studentId, e);
+    return '';
+  }
+}
+
+async function saveStudentPhoto(studentId, photoData){
+  if(!studentId) return;
+  try{
+    if(photoData){
+      await window.storage.set(STUDENT_PHOTO_KEY(studentId), photoData, true);
+    }else{
+      await window.storage.delete(STUDENT_PHOTO_KEY(studentId), true);
+    }
+  }catch(e){
+    console.warn('student photo save failed', studentId, e);
+    throw e;
+  }
+}
+
+async function deleteStudentPhoto(studentId){
+  if(!studentId) return;
+  try{ await window.storage.delete(STUDENT_PHOTO_KEY(studentId), true); }catch(e){}
+}
+
+/*
+ * PHOTO COST FIX:
+ * Student records contain only text/metadata. Photos live under separate
+ * Firebase RTDB keys and are fetched only when an ID card is generated
+ * (or when the edit-photo preview is explicitly opened).
+ *
+ * Existing installations are migrated once: old student.photo data is moved
+ * to studentPhotos/<studentId>, then the main students record is rewritten
+ * without the base64 photos. This removes the large image payload from every
+ * normal Firebase read/live-sync.
+ */
+async function migrateLegacyStudentPhotos(){
+  const legacy = STUDENTS.filter(s=>s && s.photo);
+  if(!legacy.length) return;
+
+  try{
+    await Promise.all(legacy.map(s=>saveStudentPhoto(s.id, s.photo)));
+    STUDENTS = STUDENTS.map(s=>{
+      if(!s || !s.photo) return s;
+      const copy = Object.assign({}, s);
+      delete copy.photo;
+      return copy;
+    });
+    await window.storage.set('students', JSON.stringify(STUDENTS), true);
+    console.log(`Migrated ${legacy.length} student photo(s) to lazy photo storage.`);
+  }catch(e){
+    console.error('Legacy photo migration failed; keeping existing data.', e);
+  }
+}
+
+async function saveStudents(){
+  try{
+    // Never write base64 image data into the main students record.
+    const metadata = STUDENTS.map(s=>{
+      const copy = Object.assign({}, s);
+      delete copy.photo;
+      return copy;
+    });
+    await window.storage.set('students', JSON.stringify(metadata), true);
+
+    // Save any newly selected/edited photos separately.
+    await Promise.all(
+      STUDENTS
+        .filter(s=>s && s.id && s.photo)
+        .map(s=>saveStudentPhoto(s.id, s.photo))
+    );
+  }catch(e){ toast('സേവ് പിഴവ്'); }
+}
 async function saveEntries(){ try{ await window.storage.set('entries', JSON.stringify(ENTRIES), true);}catch(e){toast('സേവ് പിഴവ്');} }
 async function saveScoresRemote(){ try{ await window.storage.set('scores', JSON.stringify(SCORES), true);}catch(e){toast('സേവ് പിഴവ്');} }
 async function saveSchedule(){ try{ await window.storage.set('schedule', JSON.stringify(SCHEDULE), true);}catch(e){toast('സേവ് പിഴവ്');} }
@@ -2542,7 +2625,7 @@ function renderEditItemChecklist(){
 }
 document.getElementById('editItemSearch').addEventListener('input', renderEditItemChecklist);
 
-function openEditStudentModal(studentId){
+async function openEditStudentModal(studentId){
   const student = STUDENTS.find(s=>s.id===studentId);
   if(!student){ toast('കുട്ടിയെ കണ്ടെത്താനായില്ല'); return; }
   if(CURRENT_USER && CURRENT_USER.role==='school' && student.schoolId!==CURRENT_USER.schoolId){
@@ -2561,8 +2644,15 @@ function openEditStudentModal(studentId){
   if(editPhotoInput) editPhotoInput.value = '';
   const editPhotoPreview = document.getElementById('editStudentPhotoPreview');
   if(editPhotoPreview){
-    if(student.photo){ editPhotoPreview.src = student.photo; editPhotoPreview.style.display = 'inline-block'; }
-    else { editPhotoPreview.src=''; editPhotoPreview.style.display = 'none'; }
+    editPhotoPreview.src='';
+    editPhotoPreview.style.display='none';
+    // Photo is deliberately fetched only when this edit dialog is opened.
+    const lazyPhoto = await getStudentPhoto(student.id);
+    if(EDIT_STUDENT_ID===student.id && lazyPhoto){
+      student.photo = lazyPhoto;
+      editPhotoPreview.src = lazyPhoto;
+      editPhotoPreview.style.display = 'inline-block';
+    }
   }
   document.getElementById('editItemCat').value = '';
   document.getElementById('editItemSearch').value = '';
@@ -2603,6 +2693,7 @@ async function deleteStudentCompletely(){
   suspendLiveSync();
   try{
     await saveStudents();
+    await deleteStudentPhoto(sid);
     await saveEntries();
     await saveScoresRemote();
   } finally { resumeLiveSync(); }
@@ -3667,6 +3758,22 @@ async function downloadIdCards(){
   if(schoolId) list = list.filter(s=>s.schoolId===schoolId);
   if(!list.length){ toast('കുട്ടികളെ കണ്ടെത്താനായില്ല'); return; }
 
+  /*
+   * LAZY PHOTO LOAD:
+   * The normal app has no student photos in memory or in the main Firebase
+   * students record. Only this ID-card action fetches the required photos.
+   */
+  toast('ഐഡി കാർഡിനുള്ള ഫോട്ടോകൾ ലോഡ് ചെയ്യുന്നു...');
+  const photoResults = await Promise.all(
+    list.map(async student => [student.id, await getStudentPhoto(student.id)])
+  );
+  const photoMap = Object.fromEntries(photoResults);
+  const cardList = list.map(student => {
+    const copy = Object.assign({}, student);
+    copy.photo = photoMap[student.id] || '';
+    return copy;
+  });
+
   // A6 card = 105 x 148mm. A4 portrait -> 2x2 = 4 cards. A3 landscape -> 4x2 = 8 cards.
   const cfg = paper==='a3'
     ? {perPage:8, cols:4, pw:420, ph:297, orientation:'landscape', format:'a3'}
@@ -3674,7 +3781,7 @@ async function downloadIdCards(){
 
   let html = '';
   for(let i=0;i<list.length;i+=cfg.perPage){
-    const chunk = list.slice(i,i+cfg.perPage);
+    const chunk = cardList.slice(i,i+cfg.perPage);
     const last = (i+cfg.perPage)>=list.length;
     html += `<div style="width:${cfg.pw}mm;height:${cfg.ph}mm;display:flex;flex-wrap:wrap;align-content:flex-start;background:#fff;${last?'':'page-break-after:always;'}">`
           + chunk.map(buildIdCardHTML).join('')
