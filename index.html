@@ -741,6 +741,13 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
       </div>
     </div>
 
+    <h3 class="section-head malayalam">ഡാറ്റ പരിശോധന</h3>
+    <div class="card">
+      <p class="malayalam" style="margin:0 0 10px;font-size:.85rem;">
+        ചിലപ്പോൾ ഒരേ സ്കൂളിന്റെ രണ്ട് ഉപകരണങ്ങളിൽ നിന്ന് ഒരേസമയം കുട്ടികളെ ചേർക്കുമ്പോൾ ഒരേ രജി. നമ്പർ രണ്ട് കുട്ടികൾക്ക് ലഭിക്കാം. ഇത് കണ്ടെത്തി, ആദ്യം ചേർത്ത കുട്ടിയുടെ നമ്പർ അതേപടി നിലനിർത്തി ബാക്കിയുള്ളവർക്ക് പുതിയ നമ്പർ നൽകാൻ താഴെയുള്ള ബട്ടൺ ഉപയോഗിക്കുക.</p>
+      <div style="margin-top:10px;"><button class="btn secondary malayalam" onclick="fixDuplicateRegNos()">🔧 ഡ്യൂപ്ലിക്കേറ്റ് രജി. നമ്പറുകൾ പരിഹരിക്കുക</button></div>
+    </div>
+
     <h3 class="section-head malayalam" style="color:var(--bad);">അപകട മേഖല (DANGER ZONE)</h3>
     <div class="card" style="border-color:var(--bad);background:#fff5f4;">
       <p class="malayalam" style="margin:0 0 10px;font-size:.85rem;">
@@ -2051,9 +2058,62 @@ function renderSchools(){
 function itemLabel(i){ return `${i.code} — ${i.name} (${i.cat})`; }
 function genRegNo(schoolId, schoolCode){
   if(!CONFIG.schoolCounters) CONFIG.schoolCounters = {};
-  CONFIG.schoolCounters[schoolId] = (CONFIG.schoolCounters[schoolId]||0) + 1;
-  const n = String(CONFIG.schoolCounters[schoolId]).padStart(3,'0');
-  return `${(schoolCode||'').toUpperCase()}${n}`;
+  const codeUpper = (schoolCode||'').toUpperCase();
+  // Two devices/tabs for the same school can each hold a slightly stale copy
+  // of CONFIG.schoolCounters (live sync is polled, not instant), so trusting
+  // the counter alone can hand out the same reg. no. to two different
+  // children. Ground the next number in whichever is higher — the stored
+  // counter or the actual reg. numbers already in use for this school — and
+  // then keep stepping past any number already taken, so a stale counter can
+  // never reproduce a regNo that already exists locally.
+  const existing = new Set(STUDENTS.filter(s=>s.schoolId===schoolId).map(s=>s.regNo));
+  let n = CONFIG.schoolCounters[schoolId] || 0;
+  existing.forEach(r=>{
+    const m = r && r.startsWith(codeUpper) ? parseInt(r.slice(codeUpper.length), 10) : NaN;
+    if(!isNaN(m) && m > n) n = m;
+  });
+  let regNo;
+  do{
+    n++;
+    regNo = `${codeUpper}${String(n).padStart(3,'0')}`;
+  } while(existing.has(regNo));
+  CONFIG.schoolCounters[schoolId] = n;
+  return regNo;
+}
+// One-time repair for reg. numbers that were already duplicated (e.g. two
+// devices for the same school assigning the same number before their data
+// synced). Keeps the earliest-created student on each duplicated number and
+// reassigns fresh, unique numbers to the rest, updating their entries too.
+async function fixDuplicateRegNos(){
+  const groups = {};
+  STUDENTS.forEach(s=>{ if(s.regNo){ (groups[s.regNo] = groups[s.regNo]||[]).push(s); } });
+  const dupGroups = Object.values(groups).filter(g=>g.length>1);
+  if(!dupGroups.length){ toast('ഡ്യൂപ്ലിക്കേറ്റ് രജി. നമ്പറുകളൊന്നും കണ്ടെത്തിയില്ല ✓'); return; }
+  let fixedCount = 0;
+  const renumbered = []; // {oldRegNo, newRegNo, name, schoolName}
+  dupGroups.forEach(g=>{
+    g.sort((a,b)=>String(a.id).localeCompare(String(b.id))); // earliest id kept as-is
+    g.slice(1).forEach(student=>{
+      const school = SCHOOLS.find(s=>s.id===student.schoolId);
+      const oldRegNo = student.regNo;
+      const newRegNo = genRegNo(student.schoolId, school ? school.code : oldRegNo.replace(/\d+$/,''));
+      student.regNo = newRegNo;
+      ENTRIES.forEach(e=>{ if(e.studentId===student.id) e.regNo = newRegNo; });
+      renumbered.push({oldRegNo, newRegNo, name:student.name, schoolName:student.schoolName||(school?school.name:'')});
+      fixedCount++;
+    });
+  });
+  suspendLiveSync();
+  try{
+    await saveStudents();
+    await saveEntries();
+    await saveConfig();
+  } finally { resumeLiveSync(); }
+  populateEntryStudentSelect();
+  renderEntries();
+  const detail = renumbered.map(r=>`${r.oldRegNo} → ${r.newRegNo} (${r.name})`).join('\n');
+  alert(`${fixedCount} കുട്ടികളുടെ രജി. നമ്പർ പുതുക്കി:\n\n${detail}`);
+  toast(`${fixedCount} ഡ്യൂപ്ലിക്കേറ്റ് രജി. നമ്പറുകൾ പരിഹരിച്ചു ✓`);
 }
 // The class a new/selected student belongs to: the class typed in the "new
 // child" form, or the stored class of whichever existing child is selected.
