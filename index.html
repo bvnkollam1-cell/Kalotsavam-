@@ -3914,7 +3914,7 @@ function buildCallSheetSection(item){
     <td style="padding:5px 7px;border:1px solid #ddd;">${e.schoolName}</td>
     <td style="padding:5px 7px;border:1px solid #ddd;"></td>
   </tr>`).join('') || `<tr><td colspan="6" style="padding:8px;text-align:center;">എൻട്രികളില്ല</td></tr>`;
-  return `<div style="page-break-after:always;padding:10px;">
+  return `<div class="call-block" style="padding:10px;margin-bottom:36px;">
     ${pdfOfficialHeader('കോൾ ഷീറ്റ് / CALL SHEET')}
     ${pdfEventMetaTable(item)}
     <table style="width:100%;border-collapse:collapse;font-size:12px;">
@@ -4166,6 +4166,7 @@ function downloadPdfDocument(type, filenamePrefix){
   document.body.appendChild(container);
   return html2pdf().set({
     margin:8, filename:`${filenamePrefix}.pdf`,
+    pagebreak: type==='call' ? {mode:['css','legacy'], avoid:['tr','.call-hdr']} : undefined,
     html2canvas:{scale:2, scrollX:0, scrollY:0, useCORS:true}, jsPDF:{unit:'mm', format:'a4', orientation}
   }).from(container).save().then(()=>{ document.body.removeChild(container); })
     .catch(()=>{ document.body.removeChild(container); toast('PDF നിർമ്മാണം പരാജയപ്പെട്ടു'); });
@@ -4187,7 +4188,7 @@ function openPrintPreview(){
     <style>
       body{font-family:'Noto Sans Malayalam',Inter,sans-serif;margin:0;color:#111;}
       @page{ size: A4 ${orientation}; margin:10mm; }
-      @media print { .no-print{display:none;} }
+      @media print { .no-print{display:none;} tr{break-inside:avoid;page-break-inside:avoid;} thead{display:table-header-group;} }
     </style></head>
     <body>
       <div class="no-print" style="padding:10px;text-align:center;background:#f3f4f6;">
@@ -4212,7 +4213,8 @@ async function downloadAllReportsZip(){
       container.innerHTML = buildPdfDocument(type, items);
       document.body.appendChild(container);
       const blob = await html2pdf().set({
-        margin:8, html2canvas:{scale:2, scrollX:0, scrollY:0, useCORS:true}, jsPDF:{unit:'mm', format:'a4', orientation}
+        margin:8, pagebreak: type==='call' ? {mode:['css','legacy'], avoid:['tr']} : undefined,
+        html2canvas:{scale:2, scrollX:0, scrollY:0, useCORS:true}, jsPDF:{unit:'mm', format:'a4', orientation}
       }).from(container).outputPdf('blob');
       document.body.removeChild(container);
       zip.file(fname, blob);
