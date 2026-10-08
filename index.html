@@ -2993,7 +2993,7 @@ async function saveAllSchedule(){
 function populateScheduleVenueSelect(){
   const sel = document.getElementById('scheduleVenueSelect');
   const prev = sel.value;
-  const venues = Array.from(new Set(Object.values(SCHEDULE).map(s=>s.venue).filter(Boolean))).sort();
+  const venues = Array.from(new Set(Object.values(SCHEDULE).map(s=>s.venue).filter(Boolean))).sort(cmpVenue);
   sel.innerHTML = venues.map(v=>`<option value="${v}">${v}</option>`).join('') || `<option value="">വേദികൾ ചേർത്തിട്ടില്ല</option>`;
   if(venues.includes(prev)) sel.value = prev;
   renderScheduleReport();
@@ -3036,6 +3036,18 @@ function renderScheduleReport(){
   box.innerHTML = html;
 }
 
+/* Venue ordering: by the number inside the venue name (e.g. "വേദി 2" < "വേദി 10"); names without a number come last */
+function venueNum(v){
+  const t = String(v||'').replace(/[൦-൯]/g, c=>String(c.charCodeAt(0)-0x0D66)); // Malayalam digits
+  const m = /\d+/.exec(t);
+  return m ? parseInt(m[0],10) : Infinity;
+}
+function cmpVenue(a,b){
+  const na = venueNum(a), nb = venueNum(b);
+  if(na!==nb) return na<nb ? -1 : 1;
+  return String(a).localeCompare(String(b),'ml',{numeric:true,sensitivity:'base'});
+}
+
 /* 24h "HH:MM" -> 12h "h:mm AM/PM" (any other text is returned unchanged) */
 function fmt12(t){
   if(t===undefined || t===null) return '-';
@@ -3048,7 +3060,7 @@ function fmt12(t){
   return h+':'+mm+' '+ap;
 }
 
-/* Schedule report for ALL venues in one PDF (one venue per page) - available to every login */
+/* Schedule report for ALL venues in one PDF (continuous, in venue-number order) - available to every login */
 function downloadAllVenuesSchedulePDF(){
   const rows = Object.entries(SCHEDULE)
     .map(([code,sc])=>({item:ITEMS.find(i=>i.code===parseInt(code)), venue:sc.venue||'', date:sc.date||'', time:sc.time||''}))
@@ -3058,11 +3070,11 @@ function downloadAllVenuesSchedulePDF(){
   rows.forEach(r=>{ (byVenue[r.venue] = byVenue[r.venue]||[]).push(r); });
   const th = 'padding:5px 7px;border:1px solid #d8c39a;text-align:left;background:#efe2c8;';
   const td = 'padding:5px 7px;border:1px solid #ddd;';
-  const venues = Object.keys(byVenue).sort((a,b)=>a.localeCompare(b));
+  const venues = Object.keys(byVenue).sort(cmpVenue);
   const html = venues.map((v,idx)=>{
     const list = byVenue[v].sort((a,b)=>a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
-    return `<div style="${idx? 'page-break-before:always;':''}padding:2mm;">
-      <h3 style="font-family:'Baloo 2','Noto Sans Malayalam',sans-serif;color:#0d4d47;margin:0 0 8px;">വേദി: ${v}</h3>
+    return `<div class="venue-block" style="${idx? 'margin-top:8mm;':''}padding:0 2mm;page-break-inside:avoid;break-inside:avoid;">
+      <h3 style="font-family:'Baloo 2','Noto Sans Malayalam',sans-serif;color:#0d4d47;margin:0 0 6px;page-break-after:avoid;">വേദി: ${v}</h3>
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
         <thead><tr><th style="${th}">കോഡ്</th><th style="${th}">ഇനം</th><th style="${th}">കാറ്റ.</th><th style="${th}">തീയതി</th><th style="${th}">സമയം</th></tr></thead>
         <tbody>${list.map(r=>`<tr style="page-break-inside:avoid;"><td style="${td}">${r.item.code}</td><td style="${td}">${r.item.name}</td><td style="${td}">${r.item.cat}</td><td style="${td}">${r.date||'-'}</td><td style="${td}">${fmt12(r.time)}</td></tr>`).join('')}</tbody>
@@ -3074,7 +3086,9 @@ function downloadAllVenuesSchedulePDF(){
   overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#fff;overflow:auto;-webkit-overflow-scrolling:touch;';
   const wrap = document.createElement('div');
   wrap.style.cssText = 'background:#fff;color:#111;width:190mm;margin:0;padding:0;font-family:"Noto Sans Malayalam",Inter,sans-serif;';
-  wrap.innerHTML = html;
+  wrap.innerHTML = `<div style="text-align:center;padding:0 2mm 6mm;">
+      <div style="font-family:'Baloo 2','Noto Sans Malayalam',sans-serif;font-size:20px;font-weight:800;color:#0d4d47;line-height:1.4;">ഭാരതീയ വിദ്യാനികേതൻ കൊല്ലം Kalolsavam കലാമൃതം 2026-27: Programme Schedule</div>
+    </div>` + html;
   overlay.appendChild(wrap);
   document.body.appendChild(overlay);
   toast('ഷെഡ്യൂൾ PDF തയ്യാറാക്കുന്നു...');
@@ -3086,7 +3100,7 @@ function downloadAllVenuesSchedulePDF(){
         margin:10, filename:'schedule-all-venues.pdf',
         html2canvas:{scale:2, scrollX:0, scrollY:0, useCORS:true, backgroundColor:'#ffffff'},
         jsPDF:{unit:'mm', format:'a4', orientation:'portrait'},
-        pagebreak:{mode:['css','legacy']}
+        pagebreak:{mode:['css','legacy'], avoid:['.venue-block']}
       }).from(wrap).save();
       toast('ഷെഡ്യൂൾ PDF ഡൗൺലോഡ് ചെയ്തു ✓');
     }catch(e){
@@ -3559,7 +3573,7 @@ function venueWiseData(){
   return Object.entries(SCHEDULE).map(([code,s])=>{
     const item = ITEMS.find(i=>i.code===parseInt(code));
     return item ? {venue:s.venue||'-', date:s.date||'-', time:s.time||'-', code:item.code, name:item.name, cat:item.cat} : null;
-  }).filter(Boolean).sort((a,b)=> a.venue.localeCompare(b.venue) || a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
+  }).filter(Boolean).sort((a,b)=> cmpVenue(a.venue,b.venue) || a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
 }
 function renderVenueWiseReport(){
   const data = venueWiseData();
@@ -3927,7 +3941,7 @@ function pdfPopulateFilters(){
     catSel.dataset.init = 1;
   }
   const venueSel = document.getElementById('pdfFilterVenue');
-  const venues = Array.from(new Set(Object.values(SCHEDULE).map(s=>s.venue).filter(Boolean))).sort();
+  const venues = Array.from(new Set(Object.values(SCHEDULE).map(s=>s.venue).filter(Boolean))).sort(cmpVenue);
   const prevVenue = venueSel.value;
   venueSel.innerHTML = '<option value="">എല്ലാ വേദികളും</option>' + venues.map(v=>`<option value="${v}">${v}</option>`).join('');
   if(venues.includes(prevVenue)) venueSel.value = prevVenue;
