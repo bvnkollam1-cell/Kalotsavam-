@@ -498,6 +498,10 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
   <section class="panel" id="panel-items">
     <h3 class="section-head">മത്സര ഇനങ്ങൾ (Item Bank)</h3>
     <div class="card">
+      <h3 class="section-head malayalam" style="margin-top:0;">📅 ഷെഡ്യൂൾ റിപ്പോർട്ട്</h3>
+      <button class="btn malayalam" onclick="downloadAllVenuesSchedulePDF()">⬇️ എല്ലാ വേദികളുടെയും ഷെഡ്യൂൾ PDF ഡൗൺലോഡ് ചെയ്യുക</button>
+    </div>
+    <div class="card">
       <div class="filters">
         <select id="itemCatFilter"><option value="">എല്ലാ കാറ്റഗറിയും</option></select>
         <select id="itemStageFilter">
@@ -682,7 +686,8 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
       <label class="malayalam">വേദി തിരഞ്ഞെടുക്കുക</label>
       <select id="scheduleVenueSelect"></select>
       <div id="scheduleReportBox" style="margin-top:10px;"></div>
-      <div style="margin-top:10px;"><button class="btn malayalam" onclick="downloadScheduleReportPDF()">⬇️ PDF ഡൗൺലോഡ് ചെയ്യുക</button></div>
+      <div style="margin-top:10px;"><button class="btn malayalam" onclick="downloadScheduleReportPDF()">⬇️ PDF ഡൗൺലോഡ് ചെയ്യുക</button>
+        <button class="btn secondary malayalam" onclick="downloadAllVenuesSchedulePDF()">⬇️ എല്ലാ വേദികളും ഒരുമിച്ച് PDF</button></div>
     </div>
   </section>
 
@@ -3024,11 +3029,72 @@ function renderScheduleReport(){
       <td style="padding:6px 8px;border:1px solid #eee;">${r.item.name}</td>
       <td style="padding:6px 8px;border:1px solid #eee;">${r.item.cat}</td>
       <td style="padding:6px 8px;border:1px solid #eee;">${r.date||'-'}</td>
-      <td style="padding:6px 8px;border:1px solid #eee;">${r.time||'-'}</td>
+      <td style="padding:6px 8px;border:1px solid #eee;">${fmt12(r.time)}</td>
     </tr>`;
   });
   html += `</tbody></table></div>`;
   box.innerHTML = html;
+}
+
+/* 24h "HH:MM" -> 12h "h:mm AM/PM" (any other text is returned unchanged) */
+function fmt12(t){
+  if(t===undefined || t===null) return '-';
+  const m = /^\s*(\d{1,2}):(\d{2})(?::\d{2})?\s*$/.exec(String(t));
+  if(!m) return t || '-';
+  let h = parseInt(m[1],10); const mm = m[2];
+  if(h>23) return t;
+  const ap = h>=12 ? 'PM' : 'AM';
+  h = h%12; if(h===0) h = 12;
+  return h+':'+mm+' '+ap;
+}
+
+/* Schedule report for ALL venues in one PDF (one venue per page) - available to every login */
+function downloadAllVenuesSchedulePDF(){
+  const rows = Object.entries(SCHEDULE)
+    .map(([code,sc])=>({item:ITEMS.find(i=>i.code===parseInt(code)), venue:sc.venue||'', date:sc.date||'', time:sc.time||''}))
+    .filter(r=>r.item && r.venue);
+  if(!rows.length){ toast('ഷെഡ്യൂൾ ലഭ്യമല്ല'); return; }
+  const byVenue = {};
+  rows.forEach(r=>{ (byVenue[r.venue] = byVenue[r.venue]||[]).push(r); });
+  const th = 'padding:5px 7px;border:1px solid #d8c39a;text-align:left;background:#efe2c8;';
+  const td = 'padding:5px 7px;border:1px solid #ddd;';
+  const venues = Object.keys(byVenue).sort((a,b)=>a.localeCompare(b));
+  const html = venues.map((v,idx)=>{
+    const list = byVenue[v].sort((a,b)=>a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
+    return `<div style="${idx? 'page-break-before:always;':''}padding:2mm;">
+      <h3 style="font-family:'Baloo 2','Noto Sans Malayalam',sans-serif;color:#0d4d47;margin:0 0 8px;">വേദി: ${v}</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr><th style="${th}">കോഡ്</th><th style="${th}">ഇനം</th><th style="${th}">കാറ്റ.</th><th style="${th}">തീയതി</th><th style="${th}">സമയം</th></tr></thead>
+        <tbody>${list.map(r=>`<tr style="page-break-inside:avoid;"><td style="${td}">${r.item.code}</td><td style="${td}">${r.item.name}</td><td style="${td}">${r.item.cat}</td><td style="${td}">${r.date||'-'}</td><td style="${td}">${fmt12(r.time)}</td></tr>`).join('')}</tbody>
+      </table></div>`;
+  }).join('');
+  // Render on a visible white overlay (same technique as the ID-card PDF) - an off-screen
+  // element makes html2canvas produce a blank page.
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#fff;overflow:auto;-webkit-overflow-scrolling:touch;';
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'background:#fff;color:#111;width:190mm;margin:0;padding:0;font-family:"Noto Sans Malayalam",Inter,sans-serif;';
+  wrap.innerHTML = html;
+  overlay.appendChild(wrap);
+  document.body.appendChild(overlay);
+  toast('ഷെഡ്യൂൾ PDF തയ്യാറാക്കുന്നു...');
+  (async ()=>{
+    try{
+      if(document.fonts && document.fonts.ready) await document.fonts.ready;
+      await new Promise(r=>setTimeout(r,300));
+      await html2pdf().set({
+        margin:10, filename:'schedule-all-venues.pdf',
+        html2canvas:{scale:2, scrollX:0, scrollY:0, useCORS:true, backgroundColor:'#ffffff'},
+        jsPDF:{unit:'mm', format:'a4', orientation:'portrait'},
+        pagebreak:{mode:['css','legacy']}
+      }).from(wrap).save();
+      toast('ഷെഡ്യൂൾ PDF ഡൗൺലോഡ് ചെയ്തു ✓');
+    }catch(e){
+      toast('PDF നിർമ്മാണം പരാജയപ്പെട്ടു');
+    }finally{
+      closeCaptureSurface(overlay);
+    }
+  })();
 }
 
 function downloadScheduleReportPDF(){
@@ -3499,13 +3565,13 @@ function renderVenueWiseReport(){
   const data = venueWiseData();
   document.getElementById('reportVenueWiseBox').innerHTML = `<div class="table-wrap"><table id="venueWiseTable">
     <thead><tr><th class="malayalam">വേദി</th><th class="malayalam">തീയതി</th><th class="malayalam">സമയം</th><th>കോഡ്</th><th class="malayalam">ഇനം</th><th>കാറ്റ.</th></tr></thead>
-    <tbody>${data.map(d=>`<tr><td class="malayalam">${d.venue}</td><td>${d.date}</td><td>${d.time}</td><td>${d.code}</td><td class="malayalam">${d.name}</td><td>${d.cat}</td></tr>`).join('') || `<tr><td colspan="6" class="empty">ഡാറ്റ ലഭ്യമല്ല</td></tr>`}</tbody>
+    <tbody>${data.map(d=>`<tr><td class="malayalam">${d.venue}</td><td>${d.date}</td><td>${fmt12(d.time)}</td><td>${d.code}</td><td class="malayalam">${d.name}</td><td>${d.cat}</td></tr>`).join('') || `<tr><td colspan="6" class="empty">ഡാറ്റ ലഭ്യമല്ല</td></tr>`}</tbody>
   </table></div>`;
 }
 function downloadVenueWisePDF(){ downloadElementAsPDF(document.getElementById('venueWiseTable'), 'venue-wise-events.pdf'); }
 function downloadVenueWiseExcel(){
   const data = venueWiseData();
-  const aoa = [['വേദി','തീയതി','സമയം','കോഡ്','ഇനം','കാറ്റഗറി'], ...data.map(d=>[d.venue,d.date,d.time,d.code,d.name,d.cat])];
+  const aoa = [['വേദി','തീയതി','സമയം','കോഡ്','ഇനം','കാറ്റഗറി'], ...data.map(d=>[d.venue,d.date,fmt12(d.time),d.code,d.name,d.cat])];
   downloadAOAExcel(aoa, 'venue-wise-events.xlsx', 'VenueWise');
 }
 
@@ -3669,10 +3735,29 @@ function idCardCategory(cls){
   return '-';
 }
 
+function idCardEntries(student){
+  // Match modern entries (studentId) AND older entries that only stored regNo,
+  // de-duplicate by item code, and keep ALL items (no cap).
+  const sid = String(student.id||'');
+  const reg = String(student.regNo||'');
+  const seen = new Set();
+  const out = [];
+  ENTRIES.forEach(e=>{
+    const byId = e.studentId && String(e.studentId)===sid;
+    const byReg = !e.studentId && reg && String(e.regNo||'')===reg;
+    if(!(byId||byReg)) return;
+    const key = String(e.itemCode||e.itemName||'');
+    if(seen.has(key)) return;
+    seen.add(key);
+    out.push(e);
+  });
+  return out;
+}
+
 function idCardQR(student){
   try{
     if(typeof qrcode!=='function') return '';
-    const entries = ENTRIES.filter(e=>e.studentId===student.id);
+    const entries = idCardEntries(student);
     const lines = [
       'KALAMRUTHAM 2026-27',
       'Name: ' + (student.name||'-'),
@@ -3684,7 +3769,7 @@ function idCardQR(student){
     if(student.gender) lines.push('Gender: ' + student.gender);
     entries.forEach((e,i)=>{
       const sch = SCHEDULE[e.itemCode] || {};
-      lines.push((i+1)+'. '+e.itemName+' | '+(sch.venue||'-')+' | '+(sch.time||'-'));
+      lines.push((i+1)+'. '+e.itemName+' | '+(sch.venue||'-')+' | '+fmt12(sch.time));
     });
     const txt = lines.join('\n');
     const qr = qrcode(0,'M');
@@ -3696,11 +3781,15 @@ function idCardQR(student){
 }
 
 function buildIdCardHTML(student){
-  const entries = ENTRIES.filter(e=>e.studentId===student.id).slice(0,5);
-  const cell = 'padding:1.1mm 1.5mm;border-bottom:.3mm solid #e6dcf2;font-size:2.7mm;';
+  const entries = idCardEntries(student);
+  // Shrink rows automatically when a student has many items so all of them fit on the card.
+  const n = entries.length;
+  const fs = n<=5 ? 2.7 : n<=7 ? 2.4 : n<=9 ? 2.1 : 1.85;
+  const pad = n<=5 ? 1.1 : n<=7 ? .8 : n<=9 ? .55 : .4;
+  const cell = `padding:${pad}mm 1.5mm;border-bottom:.3mm solid #e6dcf2;font-size:${fs}mm;line-height:1.25;`;
   const rows = entries.map(e=>{
     const sch = SCHEDULE[e.itemCode] || {};
-    return `<tr><td style="${cell}">${e.itemName}</td><td style="${cell}text-align:center;">${sch.venue||'-'}</td><td style="${cell}text-align:center;">${sch.time||'-'}</td></tr>`;
+    return `<tr><td style="${cell}">${e.itemName}</td><td style="${cell}text-align:center;">${sch.venue||'-'}</td><td style="${cell}text-align:center;">${fmt12(sch.time)}</td></tr>`;
   }).join('') || `<tr><td colspan="3" style="${cell}text-align:center;">ഇനങ്ങൾ ചേർത്തിട്ടില്ല</td></tr>`;
   const field = (label,value,bold)=>`<tr>
       <td style="font-size:3mm;color:#3b3350;padding:.5mm 0;white-space:nowrap;">${label}</td>
@@ -3900,7 +3989,7 @@ function pdfEventMetaTable(item){
   const s = SCHEDULE[item.code]||{};
   return `<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px;">
     <tr><td style="padding:3px 6px;"><b>ഇനം കോഡ്:</b> ${item.code}</td><td style="padding:3px 6px;"><b>ഇനം:</b> ${item.name}</td><td style="padding:3px 6px;"><b>കാറ്റഗറി:</b> ${item.cat}</td></tr>
-    <tr><td style="padding:3px 6px;"><b>വേദി:</b> ${s.venue||'-'}</td><td style="padding:3px 6px;"><b>തീയതി:</b> ${s.date||'-'}</td><td style="padding:3px 6px;"><b>സമയം:</b> ${s.time||'-'}</td></tr>
+    <tr><td style="padding:3px 6px;"><b>വേദി:</b> ${s.venue||'-'}</td><td style="padding:3px 6px;"><b>തീയതി:</b> ${s.date||'-'}</td><td style="padding:3px 6px;"><b>സമയം:</b> ${fmt12(s.time)}</td></tr>
   </table>`;
 }
 
@@ -3984,7 +4073,7 @@ function buildMarkSheetSection(item){
   const pageLabel = String(item.code).slice(-3) || item.code;
   const venue = s.venue || '-';
   const date = s.date || '-';
-  const time = s.time || '-';
+  const time = fmt12(s.time);
   const rubric = findRubric(item.name);
 
   return `<div style="padding:6px 10px 6px;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;box-sizing:border-box;">
@@ -4061,7 +4150,7 @@ function buildTabulationSheetSection(item){
   const pageLabel = String(item.code).slice(-3) || item.code;
   const venue = s.venue || '-';
   const date = s.date || '-';
-  const time = s.time || '-';
+  const time = fmt12(s.time);
   const jHeaders = keys.map((k,idx)=>`<th style="padding:2px;border:1px solid #111;">${idx+1}</th>`).join('');
   const rows = Array.from({length:rowsCount},(_,idx)=>{
     const e = list[idx];
