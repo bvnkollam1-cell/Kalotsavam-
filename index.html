@@ -874,8 +874,18 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
   <section class="panel" id="panel-scoring">
     <h3 class="section-head">മാർക്ക് രേഖപ്പെടുത്തൽ</h3>
     <div class="card">
-      <label>ഇനം തിരഞ്ഞെടുക്കുക</label>
-      <select id="scoreItemSelect"></select>
+      <div class="grid2">
+        <div>
+          <label class="malayalam">കാറ്റഗറി തിരഞ്ഞെടുക്കുക</label>
+          <select id="scoreCatFilter"><option value="">എല്ലാ കാറ്റഗറികളും</option></select>
+        </div>
+        <div>
+          <label class="malayalam">ഇനം തിരഞ്ഞെടുക്കുക</label>
+          <select id="scoreItemSelect"></select>
+        </div>
+      </div>
+      <label class="malayalam">പേര് / രജിസ്റ്റർ നമ്പർ / ചെസ്റ്റ് നമ്പർ തിരയുക</label>
+      <input id="scoreParticipantSearch" class="malayalam" type="search" placeholder="പേര്, രജിസ്റ്റർ നമ്പർ, ചെസ്റ്റ് നമ്പർ എന്നിവ നൽകുക">
       <label class="malayalam">ജഡ്ജസിന്റെ എണ്ണം</label>
       <select id="judgeCountSelect">
         <option value="1">1</option><option value="2">2</option><option value="3" selected>3</option>
@@ -1326,6 +1336,26 @@ const RUBRICS = [
 function findRubric(name){
   for(const r of RUBRICS){ if(r.match.test(String(name||''))) return r; }
   return null;
+}
+
+// Prefer the selected event code when resolving the scoring rubric.
+// This prevents a stale/previous rubric from being shown after switching
+// quickly between events that use similar/off-stage entries.
+function findRubricForItem(item){
+  if(!item) return null;
+  const code = String(item.code);
+  const codeRubricMap = {
+    '101':'CHITRARACHNA(CRAYON)',
+    '201':'CHITRARACHNA PENCIL',
+    '202':'CHITRARACHNA JALACHAYAM',
+    '301':'CHITRARACHNA PENCIL',
+    '302':'CHITRARACHNA JALACHAYAM'
+  };
+  if(codeRubricMap[code]){
+    const exact = findRubric(codeRubricMap[code]);
+    if(exact) return exact;
+  }
+  return findRubric(item.name);
 }
 /* ============================================================
    STORAGE HELPERS
@@ -3121,10 +3151,32 @@ function downloadScheduleReportPDF(){
 /* ============================================================
    SCORING TAB
    ============================================================ */
-function populateScoreItemSelect(){
+function populateScoreCategoryFilter(){
+  const sel = document.getElementById('scoreCatFilter');
+  if(!sel || sel.dataset.init) return;
+  sel.innerHTML = '<option value="">എല്ലാ കാറ്റഗറികളും</option>' + Object.keys(CATS).map(c=>`<option value="${c}">${CATS[c].name} (${c})</option>`).join('');
+  sel.dataset.init='1';
+  sel.addEventListener('change', ()=>{ populateScoreItemSelect(true); renderScoringTable(); });
+}
+function populateScoreItemSelect(preserve=true){
   const sel = document.getElementById('scoreItemSelect');
-  const itemsWithEntries = ITEMS.filter(i=>ENTRIES.some(e=>e.itemCode===i.code));
-  sel.innerHTML = itemsWithEntries.map(i=>`<option value="${i.code}">${itemLabel(i)}</option>`).join('') || `<option value="">എൻട്രികളില്ല</option>`;
+  const cat = document.getElementById('scoreCatFilter')?.value || '';
+  const prevOpt = preserve ? sel.options[sel.selectedIndex] : null;
+  const previousIndex = prevOpt ? prevOpt.dataset.itemIndex : '';
+  const previousCode = prevOpt ? String(prevOpt.value) : '';
+  const itemsWithEntries = ITEMS.filter(i=> (!cat || i.cat===cat) && ENTRIES.some(e=>String(e.itemCode)===String(i.code)));
+  sel.innerHTML = itemsWithEntries.map(i=>{
+    const idx = ITEMS.indexOf(i);
+    return `<option value="${i.code}" data-item-index="${idx}">${itemLabel(i)}</option>`;
+  }).join('') || `<option value="">${cat?'ഈ കാറ്റഗറിയിൽ എൻട്രികളില്ല':'എൻട്രികളില്ല'}</option>`;
+  // IMPORTANT: item codes can be duplicated/corrupted in saved catalog data.
+  // Restore the exact item object first; only fall back to code matching.
+  if(previousIndex && [...sel.options].some(o=>o.dataset.itemIndex===previousIndex)){
+    sel.value = [...sel.options].find(o=>o.dataset.itemIndex===previousIndex).value;
+    [...sel.options].forEach(o=>{ if(o.dataset.itemIndex===previousIndex) o.selected=true; });
+  } else if(previousCode && [...sel.options].some(o=>String(o.value)===previousCode)){
+    sel.value = previousCode;
+  }
 }
 function renderScoringItemList(){
   const jsel = document.getElementById('judgeCountSelect');
@@ -3137,10 +3189,12 @@ function renderScoringItemList(){
     });
     jsel.dataset.init = 1;
   }
+  populateScoreCategoryFilter();
   populateScoreItemSelect();
   renderScoringTable();
 }
 document.getElementById('scoreItemSelect').addEventListener('change', renderScoringTable);
+document.getElementById('scoreParticipantSearch').addEventListener('input', renderScoringTable);
 function judgeKeys(){
   return Array.from({length:CONFIG.judgeCount}, (_,i)=>'j'+(i+1));
 }
@@ -3154,12 +3208,19 @@ async function unlockItemScoring(code){
   renderScoringTable();
 }
 function renderScoringTable(){
-  const code = parseInt(document.getElementById('scoreItemSelect').value);
-  const item = ITEMS.find(i=>i.code===code);
+  const sel = document.getElementById('scoreItemSelect');
+  const selectedOpt = sel?.options[sel.selectedIndex];
+  const itemIndex = selectedOpt ? parseInt(selectedOpt.dataset.itemIndex) : NaN;
+  const code = parseInt(selectedOpt?.value);
+  // Use the exact item object behind the selected option. This prevents a stale
+  // or duplicate catalog code from showing another event's rubric/details.
+  const item = Number.isInteger(itemIndex) && ITEMS[itemIndex] ? ITEMS[itemIndex] : ITEMS.find(i=>String(i.code)===String(code));
   const rubricBox = document.getElementById('rubricBox');
   if(item){
-    const r = findRubric(item.name);
-    rubricBox.innerHTML = `<b>${r.title} — മൂല്യനിർണ്ണയ മാനദണ്ഡം (100 മാർക്ക്):</b><br>` + r.crit.join(' &nbsp;·&nbsp; ');
+    const r = findRubricForItem(item);
+    rubricBox.innerHTML = r
+      ? `<b>${r.title} — മൂല്യനിർണ്ണയ മാനദണ്ഡം (100 മാർക്ക്):</b><br>` + r.crit.join(' &nbsp;·&nbsp; ')
+      : `<b>${item.name} — മൂല്യനിർണ്ണയ മാനദണ്ഡം (100 മാർക്ക്)</b>`;
   } else { rubricBox.innerHTML=''; }
 
   const role = CURRENT_USER && CURRENT_USER.role;
@@ -3183,7 +3244,11 @@ function renderScoringTable(){
   document.getElementById('scoringThead').innerHTML = `<tr><th class="malayalam">${group?'സ്കൂൾ കോഡ്':'രജി. നമ്പർ'}</th><th class="malayalam">ചെസ്റ്റ് നമ്പർ</th>` +
     keys.map((k,idx)=>`<th class="malayalam">ജഡ്ജ് ${idx+1}</th>`).join('') + `<th>%</th><th class="malayalam">ഗ്രേഡ്</th></tr>`;
 
-  const allEntries = ENTRIES.filter(e=>e.itemCode===code);
+  const search = (document.getElementById('scoreParticipantSearch')?.value || '').trim().toLowerCase();
+  const allEntries = ENTRIES.filter(e=>String(e.itemCode)===String(code)).filter(e=>{
+    if(!search) return true;
+    return [e.name,e.regNo,e.chest,e.schoolName,e.schoolId].some(v=>String(v||'').toLowerCase().includes(search));
+  });
   // Group/team items: one row per SCHOOL (school code + one shared chest number +
   // one set of marks for the whole team), instead of one row per team member.
   // Marks/chest entered here are written to every member's underlying entry so the
@@ -4046,7 +4111,7 @@ function buildScoreSheetSection(item){
     ${jCells}
     <td style="padding:5px 7px;border:1px solid #ddd;"></td>
   </tr>`).join('') || `<tr><td colspan="${4+jCount}" style="padding:8px;text-align:center;">എൻട്രികളില്ല</td></tr>`;
-  const rubric = findRubric(item.name);
+  const rubric = findRubricForItem(item);
   return `<div style="page-break-after:always;padding:10px;">
     ${pdfOfficialHeader('സ്കോർ ഷീറ്റ് / SCORE SHEET')}
     ${pdfEventMetaTable(item)}
@@ -4088,7 +4153,7 @@ function buildMarkSheetSection(item){
   const venue = s.venue || '-';
   const date = s.date || '-';
   const time = fmt12(s.time);
-  const rubric = findRubric(item.name);
+  const rubric = findRubricForItem(item);
 
   return `<div style="padding:6px 10px 6px;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;box-sizing:border-box;">
     <div style="border-top:2px solid #111;border-bottom:2px solid #111;text-align:center;padding:3px 0 2px;">
