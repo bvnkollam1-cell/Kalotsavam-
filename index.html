@@ -3407,11 +3407,17 @@ function computeResult(code){
   // 1st-place finisher who also scored Grade A earns 5 (grade) + 5 (place) = 10.
   // Only entries with an actual average (i.e. actually judged) can win a place.
   const PLACE_BONUS = [5,3,1];
-  let placeSlot = 0;
+  // Equal averages share the SAME rank (competition ranking: 1,1,3,...) and every
+  // tied entry receives that rank's place bonus (e.g. two at 1st rank both get +5).
+  let placeSlot = 0, prevAvg = null, prevRank = 0;
   list.forEach(r=>{
     let placePoints = 0;
+    r.rank = null;
     if(r.avg !== null){
-      if(placeSlot < PLACE_BONUS.length) placePoints = PLACE_BONUS[placeSlot];
+      const tie = prevAvg !== null && Math.abs(r.avg - prevAvg) < 1e-6;
+      r.rank = tie ? prevRank : placeSlot + 1;
+      if(r.rank <= PLACE_BONUS.length) placePoints = PLACE_BONUS[r.rank-1];
+      prevAvg = r.avg; prevRank = r.rank;
       placeSlot++;
     }
     r.placePoints = placePoints;
@@ -3430,19 +3436,19 @@ function renderResultTable(){
   if(!list.length){ html += `<tr><td colspan="${group?5:7}" class="empty">ഫലങ്ങളില്ല</td></tr>`; }
   list.forEach((r,idx)=>{
     const gc = r.grade==='A'?'grade-A':r.grade==='B'?'grade-B':r.grade==='C'?'grade-C':'';
-    html += `<tr class="${idx===0 && r.grade?'rank-1':''}">
-      <td>${r.avg!==null? ordinal(idx+1) : '-'}</td>${group?'':`<td>${r.chest||'-'}</td><td class="malayalam">${r.name}</td>`}<td class="malayalam">${r.schoolName}</td>
+    html += `<tr class="${r.rank===1 && r.grade?'rank-1':''}">
+      <td>${r.avg!==null? ordinal(r.rank) : '-'}</td>${group?'':`<td>${r.chest||'-'}</td><td class="malayalam">${r.name}</td>`}<td class="malayalam">${r.schoolName}</td>
       <td>${r.avg!==null? r.avg.toFixed(1):'-'}</td>
       <td class="${gc}">${r.grade||'-'}</td>
       <td>${r.points}</td>
     </tr>`;
   });
   html += `</tbody></table></div>`;
-  if(list[0] && list[0].grade==='A'){
+  list.filter(r=>r.rank===1 && r.grade==='A').forEach(w=>{
     html += group
-      ? `<div class="note">🏅 <b class="malayalam">${list[0].schoolName}</b> A ഗ്രേഡോടെ ഒന്നാം സ്ഥാനം നേടി — സംസ്ഥാനതല മത്സരത്തിന് യോഗ്യത നേടി.</div>`
-      : `<div class="note">🏅 <b class="malayalam">${list[0].name}</b> (${list[0].schoolName}) A ഗ്രേഡോടെ ഒന്നാം സ്ഥാനം നേടി — സംസ്ഥാനതല മത്സരത്തിന് യോഗ്യത നേടി.</div>`;
-  }
+      ? `<div class="note">🏅 <b class="malayalam">${w.schoolName}</b> A ഗ്രേഡോടെ ഒന്നാം സ്ഥാനം നേടി — സംസ്ഥാനതല മത്സരത്തിന് യോഗ്യത നേടി.</div>`
+      : `<div class="note">🏅 <b class="malayalam">${w.name}</b> (${w.schoolName}) A ഗ്രേഡോടെ ഒന്നാം സ്ഥാനം നേടി — സംസ്ഥാനതല മത്സരത്തിന് യോഗ്യത നേടി.</div>`;
+  });
   document.getElementById('resultBox').innerHTML = html;
 }
 
@@ -3578,7 +3584,7 @@ function schoolResultPDFData(schoolId){
   ITEMS.forEach(item=>{
     if(!ENTRIES.some(e=>e.itemCode===item.code && e.schoolId===schoolId)) return;
     const results=computeResult(item.code).filter(r=>r.schoolId===schoolId && r.avg!==null);
-    results.forEach(r=>rows.push({code:item.code,item:item.name,cat:item.cat,rank:r.placePoints? (r.placePoints===5?1:r.placePoints===3?2:r.placePoints===1?3:''):'',name:r.name||school.name,avg:r.avg,grade:r.grade||'-',points:r.points||0}));
+    results.forEach(r=>rows.push({code:item.code,item:item.name,cat:item.cat,rank:r.placePoints? r.rank:'',name:r.name||school.name,avg:r.avg,grade:r.grade||'-',points:r.points||0}));
   });
   return {school,rows};
 }
@@ -3740,8 +3746,8 @@ function downloadParticipantsListExcel(){
 function winnersListData(){
   const rows = [];
   ITEMS.filter(i=>ENTRIES.some(e=>e.itemCode===i.code)).forEach(item=>{
-    computeResult(item.code).filter(r=>r.grade).slice(0,3).forEach((r,idx)=>{
-      rows.push({code:item.code, name:item.name, cat:item.cat, place:idx+1,
+    computeResult(item.code).filter(r=>r.grade && r.rank<=3).forEach(r=>{
+      rows.push({code:item.code, name:item.name, cat:item.cat, place:r.rank,
         school:r.schoolName||'-', student: r.isGroup? '' : (r.name||'-'),
         grade:r.grade, points:r.points});
     });
@@ -4488,7 +4494,7 @@ function renderPublicEventResults(){
   const group=isGroupItem(item);
   let html=`<div class="public-result-title malayalam">${itemLabel(item)}</div>`;
   html+=`<div class="table-wrap"><table><thead><tr><th>റാങ്ക്</th>${group?'':'<th>ചെസ്റ്റ്#</th><th class="malayalam">പേര്</th>'}<th class="malayalam">സ്കൂൾ</th><th>%</th><th>ഗ്രേഡ്</th><th>പോയിന്റ്</th></tr></thead><tbody>`;
-  html+=list.map((r,idx)=>{const gc=r.grade==='A'?'grade-A':r.grade==='B'?'grade-B':r.grade==='C'?'grade-C':'';return `<tr class="${idx===0&&r.grade?'rank-1':''}"><td>${r.avg!==null?ordinal(idx+1):'-'}</td>${group?'':`<td>${r.chest||'-'}</td><td class="malayalam">${r.name}</td>`}<td class="malayalam">${r.schoolName}</td><td>${r.avg!==null?r.avg.toFixed(1):'-'}</td><td class="${gc}">${r.grade||'-'}</td><td>${r.points}</td></tr>`}).join('')||`<tr><td colspan="${group?5:7}" class="empty malayalam">ഫലങ്ങളില്ല</td></tr>`;
+  html+=list.map((r,idx)=>{const gc=r.grade==='A'?'grade-A':r.grade==='B'?'grade-B':r.grade==='C'?'grade-C':'';return `<tr class="${r.rank===1&&r.grade?'rank-1':''}"><td>${r.avg!==null?ordinal(r.rank):'-'}</td>${group?'':`<td>${r.chest||'-'}</td><td class="malayalam">${r.name}</td>`}<td class="malayalam">${r.schoolName}</td><td>${r.avg!==null?r.avg.toFixed(1):'-'}</td><td class="${gc}">${r.grade||'-'}</td><td>${r.points}</td></tr>`}).join('')||`<tr><td colspan="${group?5:7}" class="empty malayalam">ഫലങ്ങളില്ല</td></tr>`;
   html+='</tbody></table></div>';
   if(!selectedCode && matches.length>1){html+=`<div class="public-mini-note malayalam">${matches.length} ഇനങ്ങൾ പൊരുത്തപ്പെട്ടു — താഴെയുള്ള ലിസ്റ്റിൽ നിന്ന് കൃത്യമായ ഇനം തിരഞ്ഞെടുക്കുക.</div>`;}
   box.innerHTML=html;
