@@ -356,6 +356,36 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
 .public-score-dots{display:flex;justify-content:center;gap:6px;margin-top:9px;}
 .public-score-dot{width:7px;height:7px;border:0;border-radius:50%;background:var(--line);padding:0;cursor:pointer;}
 .public-score-dot.active{background:var(--ochre);transform:scale(1.25);}
+/* ---------- single-event winners slideshow ---------- */
+.winner-show{position:relative;}
+.ws-slide{display:none;animation:publicSlideIn .4s ease;}
+.ws-slide.active{display:block;}
+.ws-head{text-align:center;margin-bottom:10px;}
+.ws-item{font-family:'Baloo 2','Noto Sans Malayalam',sans-serif;font-weight:800;font-size:1.1rem;color:var(--ochre-dark);line-height:1.25;}
+.ws-meta{font-size:.72rem;color:var(--teal-dark);margin-top:2px;}
+.ws-podium{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;align-items:stretch;}
+.ws-rank{border:1.5px solid var(--line);border-radius:14px;padding:10px 6px 10px;text-align:center;background:#fffdf7;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;}
+.ws-rank.r1{border-color:#d4a017;background:linear-gradient(180deg,#fff6d6,#fffdf7 70%);}
+.ws-rank.r2{border-color:#a8b0b8;background:linear-gradient(180deg,#eef1f4,#fffdf7 70%);}
+.ws-rank.r3{border-color:#c07a42;background:linear-gradient(180deg,#f8e6d4,#fffdf7 70%);}
+.ws-medal{font-family:'Baloo 2',sans-serif;font-weight:800;font-size:.8rem;padding:2px 10px;border-radius:100px;color:#fff;}
+.r1 .ws-medal{background:#c8960c;} .r2 .ws-medal{background:#7d8791;} .r3 .ws-medal{background:#a8612c;}
+.ws-person{display:flex;flex-direction:column;align-items:center;gap:4px;width:100%;}
+.ws-person+.ws-person{border-top:1px dashed var(--line);padding-top:6px;}
+.ws-photo{width:88px;height:112px;border-radius:10px;object-fit:cover;background:var(--ivory-2);border:2px solid #fff;box-shadow:0 3px 10px rgba(42,29,18,.2);display:flex;align-items:center;justify-content:center;font-family:'Baloo 2',sans-serif;font-size:1.8rem;font-weight:800;color:var(--teal-dark);overflow:hidden;}
+.r1 .ws-photo{width:104px;height:132px;}
+.ws-photo img{width:100%;height:100%;object-fit:cover;display:block;}
+.ws-name{font-weight:700;font-size:.86rem;line-height:1.25;word-break:break-word;}
+.ws-school{font-size:.72rem;color:#6b5a40;line-height:1.25;word-break:break-word;}
+.ws-empty{color:#a39373;font-size:.8rem;padding:18px 0;}
+.ws-ctrl{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:10px;}
+.ws-ctrl button{border:1px solid var(--line);background:var(--ivory-2);color:var(--teal-dark);width:34px;height:34px;border-radius:50%;font-size:1rem;cursor:pointer;}
+.ws-count{font-size:.78rem;color:var(--teal-dark);font-weight:600;min-width:64px;text-align:center;}
+@media(max-width:520px){
+  .ws-photo{width:70px;height:90px;font-size:1.4rem;} .r1 .ws-photo{width:82px;height:106px;}
+  .ws-name{font-size:.76rem;} .ws-school{font-size:.66rem;} .ws-podium{gap:5px;} .ws-rank{padding:8px 3px;}
+}
+
 .public-search-row{display:grid;grid-template-columns:1.1fr .8fr 1.1fr auto;gap:8px;align-items:end;}
 .public-search-row label{margin:0 0 4px;}
 .public-search-row .btn{height:40px;}
@@ -402,6 +432,11 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
     </div>
 
     <div class="public-live-panel" aria-label="പൊതു സ്കോർബോർഡും ഫല തിരച്ചിലും">
+      <div class="public-live-card">
+        <h3 class="public-live-title malayalam">🌟 സിംഗിൾ ഇവന്റ് വിജയികൾ</h3>
+        <div class="winner-show" data-winner-show></div>
+      </div>
+
       <div class="public-live-card">
         <h3 class="public-live-title malayalam">🏆 കാറ്റഗറി സ്കോർബോർഡ്</h3>
         <div id="publicScoreSlides"></div>
@@ -470,6 +505,9 @@ tr{transition:background .16s,transform .16s}tr:hover td{background:#faf5ff!impo
   <!-- ============ HOME ============ -->
   <section class="panel active" id="panel-home">
     <div class="stat-row" id="homeStats"></div>
+
+    <h3 class="section-head">🌟 സിംഗിൾ ഇവന്റ് വിജയികൾ</h3>
+    <div class="card"><div class="winner-show" data-winner-show></div></div>
 
     <h3 class="section-head">കാറ്റഗറികൾ</h3>
     <div class="card">
@@ -1912,6 +1950,7 @@ document.getElementById('tabnav').addEventListener('click', e=>{
    HOME
    ============================================================ */
 function renderHome(){
+  renderWinnerShow();
   const isSchool = CURRENT_USER && CURRENT_USER.role === 'school';
   const schoolId = isSchool ? CURRENT_USER.schoolId : null;
   const totalItems = ITEMS.length;
@@ -4499,9 +4538,99 @@ function renderPublicEventResults(){
   if(!selectedCode && matches.length>1){html+=`<div class="public-mini-note malayalam">${matches.length} ഇനങ്ങൾ പൊരുത്തപ്പെട്ടു — താഴെയുള്ള ലിസ്റ്റിൽ നിന്ന് കൃത്യമായ ഇനം തിരഞ്ഞെടുക്കുക.</div>`;}
   box.innerHTML=html;
 }
+/* ============================================================
+   SINGLE-EVENT WINNERS SLIDESHOW (1st / 2nd / 3rd with photo)
+   Shown on the login/home page and on the Home tab. One slide per
+   single (non-group) item whose marks are published / fully scored.
+   Photos are fetched lazily (only for the slide being shown) and cached.
+   ============================================================ */
+let WINNER_INDEX = 0, WINNER_TIMER = null, WINNER_PAUSED = false;
+const WINNER_PHOTO_CACHE = {};
+function escHtml(t){ return String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function winnerSlidesData(){
+  const out = [];
+  ITEMS.slice().sort((a,b)=>a.code-b.code).forEach(item=>{
+    if(isGroupItem(item)) return;
+    const entries = ENTRIES.filter(e=>e.itemCode===item.code);
+    if(!entries.length) return;
+    const allScored = entries.every(e=>{ const s=SCORES[e.id]; return s && Object.values(s).some(v=>v!=='' && v!==null && v!==undefined && !isNaN(Number(v))); });
+    if(!(PUBLISHED[item.code] || allScored)) return;
+    const list = computeResult(item.code).filter(r=>r.avg!==null && r.rank && r.rank<=3);
+    if(!list.length) return;
+    out.push({item, ranks:[1,2,3].map(n=>list.filter(r=>r.rank===n))});
+  });
+  return out;
+}
+function winnerPerson(r){
+  const initial = escHtml((r.name||'?').trim().charAt(0));
+  const sid = escHtml(r.studentId || '');
+  return `<div class="ws-person">
+    <div class="ws-photo" data-wsid="${sid}" data-wsreg="${escHtml(r.regNo||'')}"><span>${initial}</span></div>
+    <div class="ws-name malayalam">${escHtml(r.name)}</div>
+    <div class="ws-school malayalam">${escHtml(r.schoolName)}</div>
+  </div>`;
+}
+function renderWinnerShow(){
+  const boxes = document.querySelectorAll('[data-winner-show]');
+  if(!boxes.length) return;
+  const data = winnerSlidesData();
+  if(WINNER_INDEX >= data.length) WINNER_INDEX = 0;
+  const medals = ['🥇 ഒന്നാം സ്ഥാനം','🥈 രണ്ടാം സ്ഥാനം','🥉 മൂന്നാം സ്ഥാനം'];
+  const html = !data.length
+    ? `<div class="ws-empty malayalam" style="text-align:center">ഫലങ്ങൾ പ്രസിദ്ധീകരിക്കുന്ന മുറയ്ക്ക് വിജയികൾ ഇവിടെ കാണാം</div>`
+    : data.map((d,idx)=>`<div class="ws-slide ${idx===WINNER_INDEX?'active':''}" data-wsslide="${idx}">
+        <div class="ws-head"><div class="ws-item malayalam">${escHtml(d.item.name)}</div>
+        <div class="ws-meta malayalam">ഇനം ${d.item.code} · ${escHtml((CATS[d.item.cat]&&CATS[d.item.cat].name)||d.item.cat)} (${escHtml(d.item.cat)})</div></div>
+        <div class="ws-podium">${d.ranks.map((rs,i)=>`<div class="ws-rank r${i+1}"><span class="ws-medal malayalam">${medals[i]}</span>${rs.length?rs.map(winnerPerson).join(''):'<div class="ws-empty">—</div>'}</div>`).join('')}</div>
+      </div>`).join('') +
+      `<div class="ws-ctrl"><button type="button" aria-label="മുമ്പത്തേത്" onclick="winnerGo(-1)">‹</button><span class="ws-count" data-wscount></span><button type="button" aria-label="അടുത്തത്" onclick="winnerGo(1)">›</button></div>`;
+  boxes.forEach(b=>{
+    b.innerHTML = html;
+    b.onmouseenter = ()=>{WINNER_PAUSED=true;}; b.onmouseleave = ()=>{WINNER_PAUSED=false;};
+    b.ontouchstart = ()=>{WINNER_PAUSED=true; clearTimeout(b._t); b._t=setTimeout(()=>{WINNER_PAUSED=false;},10000);};
+  });
+  winnerActivate(WINNER_INDEX, data.length);
+  if(WINNER_TIMER) clearInterval(WINNER_TIMER);
+  if(data.length>1) WINNER_TIMER = setInterval(()=>{ if(!WINNER_PAUSED) winnerGo(1); }, 6000);
+}
+function winnerGo(step){
+  const n = document.querySelector('[data-winner-show]') ? document.querySelectorAll('[data-winner-show]')[0].querySelectorAll('.ws-slide').length : 0;
+  if(!n) return;
+  WINNER_INDEX = ((WINNER_INDEX+step)%n+n)%n;
+  winnerActivate(WINNER_INDEX, n);
+}
+function winnerActivate(idx, n){
+  document.querySelectorAll('[data-winner-show]').forEach(b=>{
+    b.querySelectorAll('.ws-slide').forEach((el,i)=>el.classList.toggle('active',i===idx));
+    const c = b.querySelector('[data-wscount]'); if(c) c.textContent = n ? `${idx+1} / ${n}` : '';
+  });
+  winnerLoadPhotos(idx); winnerLoadPhotos((idx+1)%Math.max(n,1));
+}
+async function winnerLoadPhotos(idx){
+  const holders = document.querySelectorAll(`[data-winner-show] .ws-slide[data-wsslide="${idx}"] .ws-photo`);
+  for(const h of holders){
+    let sid = h.dataset.wsid;
+    if(!sid && h.dataset.wsreg){ const st = STUDENTS.find(s=>String(s.regNo)===h.dataset.wsreg); sid = st && st.id; }
+    if(!sid || h.dataset.wsdone) continue;
+    if(!(sid in WINNER_PHOTO_CACHE)) WINNER_PHOTO_CACHE[sid] = getStudentPhoto(sid);
+    const src = await WINNER_PHOTO_CACHE[sid];
+    if(!src){ delete WINNER_PHOTO_CACHE[sid]; }
+    else { h.dataset.wsdone = 1; h.innerHTML = `<img src="${src}" alt="">`; }
+  }
+}
+// photos already fetched stay visible after a live re-render
+function winnerReapplyCached(){
+  document.querySelectorAll('[data-winner-show] .ws-photo').forEach(h=>{
+    const sid = h.dataset.wsid; if(!sid || h.dataset.wsdone) return;
+    const p = WINNER_PHOTO_CACHE[sid]; if(!p) return;
+    p.then(src=>{ if(src && !h.dataset.wsdone){ h.dataset.wsdone=1; h.innerHTML=`<img src="${src}" alt="">`; } });
+  });
+}
+
 function renderLoginPublicBoard(){
   populatePublicEventSearch();
   renderPublicScoreboard();
+  renderWinnerShow();
   renderPublicEventResults();
   startPublicScoreSlideshow();
 }
